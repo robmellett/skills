@@ -38,6 +38,14 @@ These skills help you think through problems before writing code.
 
 ## Development
 
+These are the guidelines for all new development projects.
+
+- **new-projectr**
+
+```
+npx skills@latest add robmellett/skills/new-project
+```
+
 These skills help you write, refactor, and fix code.
 
 - **tdd** — Test-driven development with a red-green-refactor loop. Builds features or fixes bugs one vertical slice at a time.
