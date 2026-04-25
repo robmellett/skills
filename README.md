@@ -66,18 +66,6 @@ These skills help you write, refactor, and fix code.
   npx skills@latest add robmellett/skills/improve-codebase-architecture
   ```
 
-- **migrate-to-shoehorn** — Migrate test files from `as` type assertions to @total-typescript/shoehorn.
-
-  ```
-  npx skills@latest add robmellett/skills/migrate-to-shoehorn
-  ```
-
-- **scaffold-exercises** — Create exercise directory structures with sections, problems, solutions, and explainers.
-
-  ```
-  npx skills@latest add robmellett/skills/scaffold-exercises
-  ```
-
 ## Tooling & Setup
 
 - **setup-pre-commit** — Set up Husky pre-commit hooks with lint-staged, Prettier, type checking, and tests.
