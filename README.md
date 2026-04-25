@@ -2,6 +2,22 @@
 
 A collection of agent skills that extend capabilities across planning, development, and tooling.
 
+## Installation
+
+If you trust me, you can install all the skills in this repository with the following command.
+
+```bash
+# List all the Available Skills
+npx skills@latest add robmellett/skills --list
+
+# Install all skills globally
+npx skills@latest add robmellett/skills --skill * --global
+
+# Install a specific skill
+npx skills@latest add robmellett/skills --skill caveman
+```
+
+
 ## Planning & Design
 
 These skills help you think through problems before writing code.
