@@ -1,3 +1,8 @@
+---
+name: new-project
+description: Preferred tech stack defaults
+---
+
 # New Project
 
 ## Tech Stack
