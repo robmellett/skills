@@ -1,4 +1,4 @@
-# {{PROJECT_NAME}} — Claude Project Configuration
+# New Project
 
 ## Tech Stack
 
