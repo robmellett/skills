@@ -56,10 +56,16 @@ These skills help you think through problems before writing code.
 
 These are the guidelines for all new development projects.
 
-- **new-projectr**
+- **new-laravel**
 
 ```
-npx skills@latest add robmellett/skills/new-project
+npx skills@latest add robmellett/skills/new-laravel
+```
+
+- **new-hono**
+
+```
+npx skills@latest add robmellett/skills/new-hono
 ```
 
 These skills help you write, refactor, and fix code.
