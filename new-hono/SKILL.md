@@ -33,7 +33,18 @@ Ask the user for a project name if not provided. Use `kebab-case`. Default: `my-
 ---
  
 ## 2. Scaffold with create-hono
+
+```bash
+npx degit robmellett/hono-template <project-name>
+
+cd <project-name>
+pnpm install
+```
  
+> `degit` clones the template without git history. Always use it — don't hand-write the scaffold.
+ 
+If there are any issues with the above command, fallback to this as a last resort.
+
 ```bash
 npm create hono@latest <project-name> -- --template cloudflare-workers
 cd <project-name>
