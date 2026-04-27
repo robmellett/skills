@@ -1,5 +1,5 @@
 ---
-name: new-project
+name: new-laravel
 description: Preferred tech stack defaults
 ---
 
