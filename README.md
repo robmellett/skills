@@ -88,6 +88,12 @@ These skills help you write, refactor, and fix code.
   npx skills@latest add robmellett/skills/improve-codebase-architecture
   ```
 
+- **larastan-preflight-reviewer** — Audit Laravel model `casts()`, `Attribute` accessors/mutators, relationship generics, and `JsonResource` `@mixin` PHPDocs so they pass Larastan/PHPStan before you run static analysis.
+
+  ```
+  npx skills@latest add robmellett/skills/larastan-preflight-reviewer
+  ```
+
 ## Tooling & Setup
 
 - **setup-pre-commit** — Set up Husky pre-commit hooks with lint-staged, Prettier, type checking, and tests.
