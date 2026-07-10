@@ -137,6 +137,14 @@ pnpm build
 pnpm tsc --noEmit
 ```
 
+Laravel / PHP:
+
+```bash
+./vendor/bin/pint             # format (uses pint.json)
+./vendor/bin/phpstan analyse  # static analysis (Larastan)
+./vendor/bin/sail up -d       # start the Sail dev environment
+```
+
 ---
 
 ## Do Not
