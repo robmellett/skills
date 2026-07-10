@@ -207,6 +207,57 @@ Split at the controller level: `IndexController`/`ShowController` for reads, `St
 - An Action may call another domain's Action, but never touch another domain's Models directly
 - Keep private helpers and internal models inside their own namespace
 
+## Vendor integrations
+
+Third-party SDK wrappers (Stripe, Twilio, Mailgun, S3, ...) live in `src/Support/<VendorName>/` — one folder per vendor, e.g. `src/Support/Stripe/`, `src/Support/Twilio/`. Never a catch-all `src/Support/Integrations/`, and never inside `src/Domain` — a vendor has no business vocabulary of its own.
+
+- A Domain owns the contract (interface); the vendor folder owns the implementation. Actions type-hint the contract, never the vendor SDK class directly.
+- `src/Support/<VendorName>` classes hold no business logic — only translation between the vendor's shape and the app's Payloads/DTOs.
+- Bind the concrete adapter to the contract in a service provider so the vendor can be swapped (e.g. Stripe → Braintree) without touching Domain code.
+- Vendor config (API keys, webhook secrets) stays in `config/services.php`, injected via the constructor — never read with `env()` inside `src/Support`.
+
+```php
+// src/Domain/Billing/Contracts/PaymentGateway.php
+interface PaymentGateway
+{
+    public function charge(int $amountInCents, string $customerId): PaymentResult;
+}
+
+// src/Support/Stripe/StripePaymentGateway.php
+final readonly class StripePaymentGateway implements PaymentGateway
+{
+    public function __construct(private StripeClient $client) {}
+
+    public function charge(int $amountInCents, string $customerId): PaymentResult
+    {
+        $charge = $this->client->charges->create([
+            'amount'   => $amountInCents,
+            'customer' => $customerId,
+            'currency' => 'usd',
+        ]);
+
+        return new PaymentResult(
+            successful: $charge->status === 'succeeded',
+            reference: $charge->id,
+        );
+    }
+}
+```
+
+```php
+// AppServiceProvider::register()
+$this->app->bind(PaymentGateway::class, StripePaymentGateway::class);
+```
+
+```
+src/Support/Stripe/
+├── StripePaymentGateway.php
+└── StripeWebhookVerifier.php
+
+src/Support/Twilio/
+└── TwilioSmsGateway.php
+```
+
 ## Naming reference
 
 | Type | Pattern | Example |
