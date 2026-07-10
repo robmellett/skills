@@ -10,10 +10,12 @@ use Illuminate\Support\Facades\DB;
 
 final readonly class {Verb}{Domain}Action
 {
-    // Compose other Actions via constructor injection — never app()/resolve().
-    public function __construct() {}
+    public static function make(): static
+    {
+        return app(static::class);
+    }
 
-    public function __invoke({Payload} $payload): {Model}
+    public function execute({Payload} $payload): {Model}
     {
         return DB::transaction(function () use ($payload) {
             // Implement the business operation (one user story).
