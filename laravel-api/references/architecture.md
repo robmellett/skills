@@ -1,181 +1,232 @@
-# Steve's Laravel API Architecture
+# Pragmatic Laravel DDD Architecture
+
+Inspired by Spatie's _Laravel Beyond CRUD_ but deliberately simplified: no `laravel-data`, no `laravel-model-states`, no view models. The goal is that the folder tree reads like the product owner's vocabulary, and a new engineer can find any business operation in under 10 seconds.
 
 ## Core Principles
 
-### 1. Stateless by Design
-- No hidden dependencies in models or services
-- Explicit data flow through DTOs
-- Query building over implicit scopes
-- Strict mode enabled to catch N+1 issues early
+### 1. Business-first naming
+- The folder tree mirrors the domain language, not framework defaults (`Customer` not `User`, `Broadcast` not `Job`).
+- Domains are singular (`Task`, not `Tasks`).
 
-### 2. Boundary-First Approach
-- Clear separation between HTTP, business logic, and data layers
-- Form Requests handle validation and transform to DTOs
+### 2. Stateless by design
+- No hidden dependencies in models or actions.
+- Explicit data flow through Payloads (DTOs).
+- Query building over implicit scopes.
+- Strict mode enabled to catch N+1 issues early.
+
+### 3. Boundary-first
+- Clear separation between HTTP, business logic, and data layers.
+- Form Requests handle validation and construct Payloads.
 - DTOs carry data between layers
-- Actions/Services contain business logic
-- Models are data access only
+- Actions contain business logic.
+- Models are data access only.
+- HTTP may depend on Domain; Domain never depends on HTTP.
 
-### 3. Resource-Scoped Organization
-- Route files scoped to resources (e.g., `routes/api/tasks.php`)
-- Controllers scoped to resources and versions (e.g., `App/Http/Controllers/Tasks/V1`)
-- All versions of a resource in one place for easy reference
+### 4. One operation, one class
+- Invokable controllers (one `__invoke()`), invokable Actions (one user story).
 
-### 4. Version Discipline
-- Versioning through namespacing (V1, V2, etc.)
-- HTTP Sunset headers for deprecation warnings
-- Keep old versions working, don't break existing clients
+### 5. Version discipline
+- Versioning through namespacing (`V1`, `V2`).
+- HTTP Sunset headers for deprecation warnings.
+- Keep old versions working; don't break existing clients.
 
-### 5. Code Quality Standards (Laravel Best Practices)
-- **Preserve Functionality** - Refactorings change HOW, never WHAT
-- **Explicit Over Implicit** - Clear code beats clever code
-- **Type Safety** - Use return types, parameter types, declare(strict_types=1)
-- **Avoid Nested Ternaries** - Use match expressions for readability
-- **PSR-12 Compliance** - Follow PHP-FIG standards strictly
-- **Proper Namespacing** - Organize imports, use full type hints
+### 6. Code quality standards
+- `declare(strict_types=1)` on every file.
+- `final readonly class` by default; return/parameter types everywhere.
+- `match` over nested ternaries; PSR-12 formatting.
+- No `app()` / `resolve()` / facade-root dependency fetching — dependency injection everywhere.
 
-## Project Structure
+## Two-Layer Structure
+
+The **domain (business) layer** lives in `src/Domain/` under the `Domain\` namespace. The **HTTP layer** stays in `app/Http/` under the `App\` namespace.
+
+### Domain layer — `src/Domain/<DomainName>/`
 
 ```
-app/
-├── Actions/               # Single-purpose business logic
-│   └── Tasks/
-│       └── CreateTask.php
-├── Services/              # Complex business logic (only when needed)
-│   └── TaskService.php
-├── Http/
-│   ├── Controllers/       # Invokable, versioned, resource-scoped
-│   │   └── Tasks/
-│   │       ├── V1/
-│   │       │   ├── StoreController.php
-│   │       │   ├── IndexController.php
-│   │       │   └── ShowController.php
-│   │       └── V2/
-│   │           └── StoreController.php
-│   ├── Requests/          # Validation + transformation to DTOs
-│   │   └── Tasks/
-│   │       └── V1/
-│   │           └── StoreTaskRequest.php
-│   ├── Payloads/          # DTOs for data transfer
-│   │   └── Tasks/
-│   │       └── StoreTaskPayload.php
-│   ├── Responses/         # Responsable classes
-│   │   ├── JsonDataResponse.php
-│   │   └── JsonErrorResponse.php
-│   └── Middleware/
-│       └── HttpSunset.php
+src/Domain/<DomainName>/
+├── Actions/             # business operations (invokable)
+├── Payloads/            # typed DTOs (consumed by HTTP, Jobs, CLI)
+├── Models/              # Eloquent — data access only
+├── Enums/               # status, type, role values
+├── Events/              # domain events (optional)
+└── Exceptions/          # domain exceptions (optional)
+```
+
+### HTTP layer — `app/Http/`
+
+```
+app/Http/
+├── Controllers/<Domain>/V1/   # invokable, versioned
+├── Requests/<Domain>/V1/      # validation + payload()
+├── Responses/                 # shared Responsable classes
+│   ├── JsonDataResponse.php
+│   └── JsonErrorResponse.php
+└── Middleware/
+    └── HttpSunset.php
+
+routes/api/
+├── routes.php                 # main API routing file, version grouping
+└── <domain>.php               # all routes for a domain, all versions
+```
+
+### Composer autoload
+
+```json
+"autoload": {
+    "psr-4": {
+        "App\\": "app/",
+        "Domain\\": "src/Domain/"
+    }
+}
+```
+
+Run `composer dump-autoload` after adding the namespace.
+
+### Worked example — `Task` domain
+
+```
+src/Domain/Task/
+├── Actions/
+│   ├── CreateTaskAction.php
+│   ├── CompleteTaskAction.php
+│   └── RecordTaskCreatedAction.php
+├── Payloads/
+│   └── StoreTaskPayload.php
 ├── Models/
 │   └── Task.php
-└── Providers/
-    └── AppServiceProvider.php  # Model::shouldBeStrict()
+├── Enums/
+│   ├── TaskStatus.php
+│   └── Priority.php
+└── Exceptions/
+    └── InvalidStateTransition.php
 
-routes/
-├── api/
-│   ├── routes.php         # Main API routing file
-│   └── tasks.php          # All task routes, all versions
+app/Http/
+├── Controllers/Task/V1/
+│   ├── IndexTaskController.php
+│   ├── ShowTaskController.php
+│   └── StoreTaskController.php
+├── Requests/Task/V1/
+│   └── StoreTaskRequest.php
+└── Responses/
+    ├── JsonDataResponse.php
+    └── JsonErrorResponse.php
 ```
+
+Namespaces:
+- `Domain\Task\Actions\CreateTaskAction`
+- `Domain\Task\Payloads\StoreTaskPayload`
+- `App\Http\Controllers\Task\V1\StoreTaskController`
 
 ## Component Patterns
 
 ### Models
-- Always use ULIDs instead of auto-incrementing IDs
-- Use `Model::shouldBeStrict()` in AppServiceProvider to prevent N+1 issues
-- Keep models simple - data access only
-- No business logic in models
+- Live in `Domain\<Domain>\Models`.
+- Always use ULIDs instead of auto-incrementing IDs.
+- Cast statuses/types to backed enums and dates to `immutable_datetime`.
+- `Model::shouldBeStrict()` in `AppServiceProvider` to prevent N+1 issues.
+- Data access only — no business logic.
 
-### Controllers
-- Always invokable (single action per controller)
-- Organized by resource and version: `Tasks/V1/StoreController.php`
-- Minimal logic - coordinate between Form Request, Action/Service, and Response
-- Type-hint Form Request in `__invoke` method
+### Enums
+- Live in `Domain\<Domain>\Enums`.
+- Backed enums model status/type/role values.
+- Encode allowed transitions with a `canTransitionTo(self $next): bool` method using `match`.
+
+### Payloads (DTOs)
+- Live in `Domain\<Domain>\Payloads` (domain-level so HTTP, Jobs, and CLI can all consume them).
+- `final readonly class` with promoted public properties.
+- `toArray()` for persistence; no business logic.
+- **All communication between layers happens through Payloads. Never pass `array $data` across a boundary.**
 
 ### Form Requests
-- Handle validation rules
-- Include `payload()` method that returns a DTO from `app/Http/Payloads`
-- Transform and sanitize input data
-- Return strongly-typed DTOs for type safety
-
-### DTOs (Data Transfer Objects)
-- Simple data classes in `app/Http/Payloads`
-- Public properties for data
-- `toArray()` method for serialization
-- No business logic - pure data carriers
-- Make data flow explicit and trackable
+- Live in `App\Http\Requests\<Domain>\V1`.
+- Handle validation rules.
+- Expose a `payload()` method that builds the domain Payload from `validated()` data.
+- Validate enums with `new Enum(SomeEnum::class)`.
 
 ### Actions
-- Single-purpose classes in `app/Actions`
-- One public method: `handle()`
-- Contain focused business logic
-- Return domain objects or DTOs
-- Prefer Actions over Services
+- Live in `Domain\<Domain>\Actions`.
+- Named `{Verb}{Domain}Action`; single `__invoke()` (or `handle()` for queue-job parity).
+- Compose other Actions via constructor injection — never `app()`/`resolve()` in the body.
+- Wrap multi-write operations in `DB::transaction()`.
+- Guard preconditions early; throw domain exceptions.
+- **One action = one user story.** If the name doesn't describe something a stakeholder might ask for, it's the wrong shape.
 
-### Services
-- Only use when logic is too large/complex for an Action
-- Coordinate multiple Actions or complex workflows
-- Still maintain single responsibility
+### Services (rare escape hatch)
+- Only when orchestrating many Actions is genuinely too much for Action-to-Action composition.
+- Prefer composing Actions over introducing a Service.
 
-### Response Classes
-- Implement `Responsable` interface
-- `asResponse()` returns `JsonResponse`
-- Standard format: `{data, meta, errors}`
-- Consistent API responses across the application
+### Controllers
+- Live in `App\Http\Controllers\<Domain>\V1`.
+- Invokable, one operation per class, named `{Verb}{Domain}Controller`.
+- **Controllers have one job: wire the request to the action and shape the response. No business logic, no model writes.**
+- Method-inject the Action into `__invoke()` and call it directly.
+
+### Response classes
+- Implement `Responsable`; live in `App\Http\Responses`.
+- Base success envelope: `{ "data": ... }`, with optional `{ "meta": ... }`.
+- Errors use `application/problem+json` (RFC 7807) via `JsonErrorResponse` / the exception handler.
 
 ### Routing
-- Main entry: `routes/api/routes.php`
-- Resource files: `routes/api/{resource}.php`
-- Group by version within resource files
-- Apply version-specific middleware
-- HTTP Sunset middleware for deprecations
+- Main entry: `routes/api/routes.php`.
+- Domain files: `routes/api/<domain>.php`.
+- Group by version; apply version-specific middleware (including HTTP Sunset).
 
-### Error Handling
-- Use `application/problem+json` format (RFC 7807)
-- Convert exceptions in application exception handler
-- Consistent error structure across API
-- Proper HTTP status codes
+### Query building (read side)
+- Use Spatie Query Builder in read controllers.
+- Explicit eager loading with `allowedIncludes()`; avoid hidden scopes.
 
-### Query Building
-- Use Spatie Query Builder for filtering, sorting, includes
-- Start with `Model::query()` 
-- Create custom query builders only when needed
-- Explicit eager loading with `allowedIncludes()`
-- Avoid hidden query scopes
+## Lightweight CQRS (controller level)
+
+Split reads from writes at the controller layer, not the query builder:
+- **Read** controllers (`Index`, `Show`) query models directly.
+- **Write** controllers (`Store`, `Update`, `Destroy`) always go through an Action.
+
+**A controller either reads or writes. Never both.**
+
+## State Management (enums + guards)
+
+Model state with backed enums that own their transition rules, and guard the transition inside the Action with `throw_unless(...)`. Only adopt `spatie/laravel-model-states` if transitions grow complex with side effects or parallel states.
+
+## Cross-Domain Boundaries
+
+- Cross-domain calls go through **Actions**, not raw model relationships.
+- A domain exposes a few public Actions; everything else stays private.
+- Domain Actions may call other domains' Actions, but never `use Domain\Other\Models\...` directly.
+- Avoid foreign keys across important boundaries (e.g. billing → CRM) — bridge with IDs and explicit lookups.
 
 ## Authentication
-- JWT tokens via PHP Open Source Saver package
-- Stateless authentication
-- Token in Authorization header: `Bearer {token}`
-- Refresh token flow for long-lived sessions
+- JWT tokens via the PHP Open Source Saver package.
+- Stateless authentication; token in `Authorization: Bearer {token}`.
+- Refresh token flow for long-lived sessions.
 
-## Common Patterns
+## Common Workflows
 
-### Creating a New Endpoint
+### Creating a new operation
 
-1. Add route in `routes/api/{resource}.php`
-2. Create invokable controller in `App/Http/Controllers/{Resource}/V1/`
-3. Create Form Request with validation + `payload()` method
-4. Create DTO in `App/Http/Payloads/{Resource}/`
-5. Create Action in `App/Actions/{Resource}/`
-6. Create Response class (or use existing)
-7. Wire it together in controller
+1. Add route in `routes/api/<domain>.php`.
+2. Create/extend the model in `Domain\<Domain>\Models`.
+3. Add backed enums in `Domain\<Domain>\Enums` (with transition guards).
+4. Create the Payload in `Domain\<Domain>\Payloads`.
+5. Create the Form Request in `App\Http\Requests\<Domain>\V1` with a `payload()` method.
+6. Create the Action in `Domain\<Domain>\Actions`.
+7. Create the invokable Controller in `App\Http\Controllers\<Domain>\V1`.
 
-### Versioning an Endpoint
+### Versioning an operation
 
-1. Create V2 namespace: `App/Http/Controllers/{Resource}/V2/`
-2. Copy and modify controller from V1
-3. Update Form Request if validation changes
-4. Update DTO if structure changes
-5. Add V2 route group in `routes/api/{resource}.php`
-6. Add Sunset header to V1 routes
+1. Create the V2 namespace: `App\Http\Controllers\<Domain>\V2`.
+2. Copy and modify the controller from V1; update Request/Payload if the contract changes.
+3. Add a V2 route group in `routes/api/<domain>.php`.
+4. Add the Sunset header/middleware to V1 routes.
 
-### Adding Query Capabilities
+### Adding query capabilities (read controller)
 
 ```php
-// In controller
 use Spatie\QueryBuilder\QueryBuilder;
 
 $tasks = QueryBuilder::for(Task::class)
     ->allowedFilters(['status', 'priority'])
-    ->allowedSorts(['created_at', 'due_date'])
-    ->allowedIncludes(['project', 'assignee'])
+    ->allowedSorts(['created_at', 'due_at'])
+    ->allowedIncludes(['project', 'owner'])
     ->paginate();
 ```
 
@@ -183,83 +234,29 @@ $tasks = QueryBuilder::for(Task::class)
 
 - ❌ Auto-incrementing IDs (use ULIDs)
 - ❌ Business logic in models
-- ❌ Multiple actions per controller
-- ❌ Direct request data access in controllers/actions
-- ❌ Hidden query scopes
-- ❌ Service classes when an Action would do
+- ❌ Business logic in controllers, or a controller that both reads and writes
+- ❌ Multiple operations per controller
+- ❌ Passing `array $data` across a boundary instead of a Payload
+- ❌ Direct request access in Actions
+- ❌ `use Domain\Other\Models\...` — cross-domain access must go through Actions
+- ❌ Foreign keys across important domain boundaries
+- ❌ Fetching dependencies via `app()` / `resolve()` / facade roots
+- ❌ String statuses via `Rule::in([...])` instead of backed enums with guards
+- ❌ Service classes when Action-to-Action composition would do
 - ❌ Breaking changes without versioning
 - ❌ Inconsistent response formats
-- ❌ Missing N+1 query prevention
-- ❌ Nested ternary operators
-- ❌ Missing type declarations
-- ❌ Overly compact code that sacrifices readability
+- ❌ Nested ternary operators; missing type declarations
 
-## Code Simplification Patterns
+## Pre-Ship Checklist
 
-### Match Expressions Over Nested Ternaries
-
-```php
-// ❌ Avoid: Hard to read
-$priority = $task->urgent ? 'high' : ($task->important ? 'medium' : 'low');
-
-// ✅ Prefer: Clear and explicit
-$priority = match (true) {
-    $task->urgent => 'high',
-    $task->important => 'medium',
-    default => 'low',
-};
-```
-
-### Extract Complex Conditions
-
-```php
-// ❌ Avoid: Inline complexity
-if ($user->role === 'admin' || ($user->role === 'manager' && $user->department === 'sales')) {
-    // ...
-}
-
-// ✅ Prefer: Named method
-if ($this->canAccessSalesData($user)) {
-    // ...
-}
-
-private function canAccessSalesData(User $user): bool
-{
-    return $user->role === 'admin' 
-        || ($user->role === 'manager' && $user->department === 'sales');
-}
-```
-
-### Explicit Type Declarations
-
-```php
-// ❌ Avoid: Missing types
-class UpdateTask
-{
-    public function handle($task, $payload)
-    {
-        // ...
-    }
-}
-
-// ✅ Prefer: Full type safety
-final readonly class UpdateTask
-{
-    public function handle(Task $task, UpdateTaskPayload $payload): Task
-    {
-        // ...
-    }
-}
-```
-
-### Declare Strict Types
-
-Always start files with:
-
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Actions\Tasks;
-```
+- Every business operation lives in an Action.
+- Controllers wire only Request → Action → Response.
+- No `array $data` crossing boundaries — Payloads everywhere.
+- Form Requests carry validation **and** the `payload()` method.
+- Models contain no business logic.
+- `declare(strict_types=1)` on every file.
+- Every class is `final` (and `readonly` where applicable).
+- No `app()` / `resolve()` / facade-root dependency fetching.
+- State transitions gated by enum guards or explicit Actions.
+- Cross-domain access goes through Actions, never foreign models.
+- Tests target Actions and HTTP endpoints, not models.

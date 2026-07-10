@@ -1,16 +1,61 @@
 # Code Examples
 
-This document contains complete, working examples of each component in Steve's Laravel API architecture.
+Complete, working examples of each component in the pragmatic Laravel DDD architecture. Domain (business) classes live under `src/Domain/` in the `Domain\` namespace; HTTP classes live under `app/Http/` in the `App\` namespace.
 
-## Model with ULID
+## Enum (`src/Domain/Task/Enums/`)
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace App\Models;
+namespace Domain\Task\Enums;
 
+enum TaskStatus: string
+{
+    case Draft     = 'draft';
+    case Active    = 'active';
+    case Completed = 'completed';
+
+    public function canTransitionTo(self $next): bool
+    {
+        return match ($this) {
+            self::Draft     => $next === self::Active,
+            self::Active    => $next === self::Completed,
+            self::Completed => false,
+        };
+    }
+}
+```
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace Domain\Task\Enums;
+
+enum Priority: string
+{
+    case Low    = 'low';
+    case Medium = 'medium';
+    case High   = 'high';
+}
+```
+
+## Model with ULID (`src/Domain/Task/Models/`)
+
+Models are `final class` (not `readonly` — Eloquent mutates them). Data access only.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace Domain\Task\Models;
+
+use Domain\Task\Enums\Priority;
+use Domain\Task\Enums\TaskStatus;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -26,41 +71,71 @@ final class Task extends Model
         'description',
         'status',
         'priority',
-        'due_date',
+        'due_at',
         'project_id',
-        'assignee_id',
     ];
 
     protected $casts = [
-        'due_date' => 'datetime',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
+        'status'   => TaskStatus::class,
+        'priority' => Priority::class,
+        'due_at'   => 'immutable_datetime',
     ];
 
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
     }
-
-    public function assignee(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'assignee_id');
-    }
 }
 ```
 
-## Form Request with DTO
+## Payload / DTO (`src/Domain/Task/Payloads/`)
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace App\Http\Requests\Tasks\V1;
+namespace Domain\Task\Payloads;
 
-use App\Http\Payloads\Tasks\StoreTaskPayload;
+use Carbon\CarbonImmutable;
+use Domain\Task\Enums\Priority;
+
+final readonly class StoreTaskPayload
+{
+    public function __construct(
+        public string $title,
+        public ?string $description,
+        public ?CarbonImmutable $dueAt,
+        public Priority $priority,
+        public string $projectId,
+    ) {}
+
+    public function toArray(): array
+    {
+        return [
+            'title'       => $this->title,
+            'description' => $this->description,
+            'due_at'      => $this->dueAt,
+            'priority'    => $this->priority->value,
+            'project_id'  => $this->projectId,
+        ];
+    }
+}
+```
+
+## Form Request with payload() (`app/Http/Requests/Task/V1/`)
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Requests\Task\V1;
+
+use Domain\Task\Enums\Priority;
+use Domain\Task\Payloads\StoreTaskPayload;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Enum;
 
 final class StoreTaskRequest extends FormRequest
 {
@@ -72,138 +147,271 @@ final class StoreTaskRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'title' => ['required', 'string', 'max:255'],
+            'title'       => ['required', 'string', 'max:200'],
             'description' => ['nullable', 'string', 'max:1000'],
-            'status' => [
-                'required',
-                'string',
-                Rule::in(['pending', 'in_progress', 'completed']),
-            ],
-            'priority' => [
-                'required',
-                'string',
-                Rule::in(['low', 'medium', 'high']),
-            ],
-            'due_date' => ['nullable', 'date', 'after:today'],
-            'project_id' => ['required', 'string', 'exists:projects,id'],
-            'assignee_id' => ['nullable', 'string', 'exists:users,id'],
+            'due_at'      => ['nullable', 'date', 'after:now'],
+            'priority'    => ['required', new Enum(Priority::class)],
+            'project_id'  => ['required', 'string', 'exists:projects,id'],
         ];
     }
 
     public function payload(): StoreTaskPayload
     {
         return new StoreTaskPayload(
-            title: $this->string('title')->toString(),
-            description: $this->string('description')->toString(),
-            status: $this->string('status')->toString(),
-            priority: $this->string('priority')->toString(),
-            dueDate: $this->date('due_date'),
-            projectId: $this->string('project_id')->toString(),
-            assigneeId: $this->string('assignee_id')->toString(),
+            title: $this->validated('title'),
+            description: $this->validated('description'),
+            dueAt: $this->date('due_at')?->toImmutable(),
+            priority: Priority::from($this->validated('priority')),
+            projectId: $this->validated('project_id'),
         );
     }
 }
 ```
 
-## DTO (Data Transfer Object)
+## Action — create with composition + transaction (`src/Domain/Task/Actions/`)
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace App\Http\Payloads\Tasks;
+namespace Domain\Task\Actions;
 
-use DateTimeInterface;
+use Domain\Task\Models\Task;
+use Domain\Task\Payloads\StoreTaskPayload;
+use Illuminate\Support\Facades\DB;
 
-final readonly class StoreTaskPayload
+final readonly class CreateTaskAction
 {
     public function __construct(
-        public string $title,
-        public ?string $description,
-        public string $status,
-        public string $priority,
-        public ?DateTimeInterface $dueDate,
-        public string $projectId,
-        public ?string $assigneeId,
+        private RecordTaskCreatedAction $recordAuditTrail,
     ) {}
 
-    public function toArray(): array
+    public function __invoke(StoreTaskPayload $payload): Task
     {
-        return [
-            'title' => $this->title,
-            'description' => $this->description,
-            'status' => $this->status,
-            'priority' => $this->priority,
-            'due_date' => $this->dueDate?->format('Y-m-d'),
-            'project_id' => $this->projectId,
-            'assignee_id' => $this->assigneeId,
-        ];
+        return DB::transaction(function () use ($payload) {
+            $task = Task::create($payload->toArray());
+
+            ($this->recordAuditTrail)($task);
+
+            return $task;
+        });
     }
 }
 ```
 
-## Action Class
+## Action — state transition with guard
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace App\Actions\Tasks;
+namespace Domain\Task\Actions;
 
-use App\Http\Payloads\Tasks\StoreTaskPayload;
-use App\Models\Task;
+use Domain\Task\Enums\TaskStatus;
+use Domain\Task\Exceptions\InvalidStateTransition;
+use Domain\Task\Models\Task;
 
-final readonly class CreateTask
+final readonly class CompleteTaskAction
 {
-    public function handle(StoreTaskPayload $payload): Task
+    public function __invoke(Task $task): Task
     {
-        return Task::create($payload->toArray());
+        throw_unless(
+            $task->status->canTransitionTo(TaskStatus::Completed),
+            new InvalidStateTransition(
+                "Task {$task->id} cannot be completed from {$task->status->value}",
+            ),
+        );
+
+        $task->update(['status' => TaskStatus::Completed]);
+
+        return $task;
     }
 }
 ```
 
-## Invokable Controller
+## Domain Exception (`src/Domain/Task/Exceptions/`)
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace App\Http\Controllers\Tasks\V1;
+namespace Domain\Task\Exceptions;
 
-use App\Actions\Tasks\CreateTask;
-use App\Http\Requests\Tasks\V1\StoreTaskRequest;
+use RuntimeException;
+
+final class InvalidStateTransition extends RuntimeException
+{
+}
+```
+
+## Invokable write controller (`app/Http/Controllers/Task/V1/`)
+
+The Action is method-injected. The controller only wires Request → Action → Response.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Task\V1;
+
+use App\Http\Requests\Task\V1\StoreTaskRequest;
 use App\Http\Responses\JsonDataResponse;
-use Illuminate\Http\JsonResponse;
+use Domain\Task\Actions\CreateTaskAction;
 
-final readonly class StoreController
+final class StoreTaskController
 {
-    public function __construct(
-        private CreateTask $createTask,
-    ) {}
-
-    public function __invoke(StoreTaskRequest $request): JsonResponse
+    public function __invoke(StoreTaskRequest $request, CreateTaskAction $action): JsonDataResponse
     {
-        $task = $this->createTask->handle(
-            payload: $request->payload(),
-        );
+        $task = $action($request->payload());
+
+        return new JsonDataResponse($task, status: 201);
+    }
+}
+```
+
+## Read controller with Query Builder (CQRS read side)
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Task\V1;
+
+use App\Http\Responses\JsonDataResponse;
+use Domain\Task\Models\Task;
+use Spatie\QueryBuilder\QueryBuilder;
+
+final class IndexTaskController
+{
+    public function __invoke(): JsonDataResponse
+    {
+        $tasks = QueryBuilder::for(Task::class)
+            ->allowedFilters(['status', 'priority', 'project_id'])
+            ->allowedSorts(['created_at', 'due_at', 'priority'])
+            ->allowedIncludes(['project'])
+            ->paginate();
 
         return new JsonDataResponse(
-            data: $task,
-            status: 201,
+            data: $tasks->items(),
+            meta: [
+                'current_page' => $tasks->currentPage(),
+                'per_page'     => $tasks->perPage(),
+                'total'        => $tasks->total(),
+                'last_page'    => $tasks->lastPage(),
+            ],
         );
     }
 }
 ```
 
-## Response Classes
-
-### Success Response
+## Show controller
 
 ```php
 <?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Task\V1;
+
+use App\Http\Responses\JsonDataResponse;
+use Domain\Task\Models\Task;
+use Spatie\QueryBuilder\QueryBuilder;
+
+final class ShowTaskController
+{
+    public function __invoke(string $task): JsonDataResponse
+    {
+        $task = QueryBuilder::for(Task::where('id', $task))
+            ->allowedIncludes(['project'])
+            ->firstOrFail();
+
+        return new JsonDataResponse($task);
+    }
+}
+```
+
+## Update controller + action
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Task\V1;
+
+use App\Http\Requests\Task\V1\UpdateTaskRequest;
+use App\Http\Responses\JsonDataResponse;
+use Domain\Task\Actions\UpdateTaskAction;
+use Domain\Task\Models\Task;
+
+final class UpdateTaskController
+{
+    public function __invoke(UpdateTaskRequest $request, Task $task, UpdateTaskAction $action): JsonDataResponse
+    {
+        $updated = $action($task, $request->payload());
+
+        return new JsonDataResponse($updated);
+    }
+}
+```
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace Domain\Task\Actions;
+
+use Domain\Task\Models\Task;
+use Domain\Task\Payloads\UpdateTaskPayload;
+
+final readonly class UpdateTaskAction
+{
+    public function __invoke(Task $task, UpdateTaskPayload $payload): Task
+    {
+        $task->update($payload->toArray());
+
+        return $task->fresh();
+    }
+}
+```
+
+## Destroy controller
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Task\V1;
+
+use Domain\Task\Models\Task;
+use Illuminate\Http\JsonResponse;
+
+final class DestroyTaskController
+{
+    public function __invoke(Task $task): JsonResponse
+    {
+        $task->delete();
+
+        return new JsonResponse(status: 204);
+    }
+}
+```
+
+## Response classes (`app/Http/Responses/`)
+
+### Success
+
+```php
+<?php
+
+declare(strict_types=1);
 
 namespace App\Http\Responses;
 
@@ -216,8 +424,7 @@ final readonly class JsonDataResponse implements Responsable
         private mixed $data,
         private ?array $meta = null,
         private int $status = 200,
-    ) {
-    }
+    ) {}
 
     public function toResponse($request): JsonResponse
     {
@@ -227,18 +434,17 @@ final readonly class JsonDataResponse implements Responsable
             $response['meta'] = $this->meta;
         }
 
-        return new JsonResponse(
-            data: $response,
-            status: $this->status,
-        );
+        return new JsonResponse($response, $this->status);
     }
 }
 ```
 
-### Error Response
+### Error
 
 ```php
 <?php
+
+declare(strict_types=1);
 
 namespace App\Http\Responses;
 
@@ -248,23 +454,32 @@ use Illuminate\Http\JsonResponse;
 final readonly class JsonErrorResponse implements Responsable
 {
     public function __construct(
-        private array $errors,
+        private string $title,
         private int $status = 400,
-        private ?array $meta = null,
-    ) {
-    }
+        private ?string $detail = null,
+        private ?array $errors = null,
+    ) {}
 
     public function toResponse($request): JsonResponse
     {
-        $response = ['errors' => $this->errors];
+        $problem = [
+            'type'   => 'about:blank',
+            'title'  => $this->title,
+            'status' => $this->status,
+        ];
 
-        if ($this->meta !== null) {
-            $response['meta'] = $this->meta;
+        if ($this->detail !== null) {
+            $problem['detail'] = $this->detail;
+        }
+
+        if ($this->errors !== null) {
+            $problem['errors'] = $this->errors;
         }
 
         return new JsonResponse(
-            data: $response,
+            data: $problem,
             status: $this->status,
+            headers: ['Content-Type' => 'application/problem+json'],
         );
     }
 }
@@ -272,10 +487,12 @@ final readonly class JsonErrorResponse implements Responsable
 
 ## Routes
 
-### Main API Routes File
+### Main API routes file
 
 ```php
 <?php
+
+declare(strict_types=1);
 // routes/api/routes.php
 
 use Illuminate\Support\Facades\Route;
@@ -284,194 +501,40 @@ Route::prefix('v1')->group(function () {
     require __DIR__ . '/tasks.php';
     require __DIR__ . '/projects.php';
 });
-
-Route::prefix('v2')->group(function () {
-    require __DIR__ . '/tasks.php';
-});
 ```
 
-### Resource Routes File
+### Domain routes file
 
 ```php
 <?php
+
+declare(strict_types=1);
 // routes/api/tasks.php
 
-use App\Http\Controllers\Tasks\V1;
+use App\Http\Controllers\Task\V1;
 use Illuminate\Support\Facades\Route;
 
-// V1 Routes
-Route::middleware(['auth:api', 'http.sunset:2025-12-31'])->group(function () {
-    Route::get('/tasks', V1\IndexController::class);
-    Route::post('/tasks', V1\StoreController::class);
-    Route::get('/tasks/{task}', V1\ShowController::class);
-    Route::patch('/tasks/{task}', V1\UpdateController::class);
-    Route::delete('/tasks/{task}', V1\DestroyController::class);
+Route::middleware(['auth:api'])->group(function () {
+    // Reads — direct model queries
+    Route::get('/tasks', V1\IndexTaskController::class);
+    Route::get('/tasks/{task}', V1\ShowTaskController::class);
+
+    // Writes — through Actions
+    Route::post('/tasks', V1\StoreTaskController::class);
+    Route::patch('/tasks/{task}', V1\UpdateTaskController::class);
+    Route::delete('/tasks/{task}', V1\DestroyTaskController::class);
 });
 
-// V2 Routes (when needed)
-// Route::middleware(['auth:api'])->group(function () {
-//     Route::get('/tasks', \App\Http\Controllers\Tasks\V2\IndexController::class);
-//     Route::post('/tasks', \App\Http\Controllers\Tasks\V2\StoreController::class);
-// });
+// V2 (when needed) — add Sunset middleware to V1 above:
+// Route::middleware(['auth:api', 'http.sunset:2025-12-31'])->group(...)
 ```
 
-## Index Controller with Query Builder
+## HTTP Sunset middleware (`app/Http/Middleware/`)
 
 ```php
 <?php
 
-namespace App\Http\Controllers\Tasks\V1;
-
-use App\Http\Responses\JsonDataResponse;
-use App\Models\Task;
-use Illuminate\Http\JsonResponse;
-use Spatie\QueryBuilder\QueryBuilder;
-
-final class IndexController
-{
-    public function __invoke(): JsonResponse
-    {
-        $tasks = QueryBuilder::for(Task::class)
-            ->allowedFilters([
-                'status',
-                'priority',
-                'project_id',
-                'assignee_id',
-            ])
-            ->allowedSorts([
-                'created_at',
-                'due_date',
-                'priority',
-            ])
-            ->allowedIncludes([
-                'project',
-                'assignee',
-            ])
-            ->paginate();
-
-        return new JsonDataResponse(
-            data: $tasks->items(),
-            meta: [
-                'current_page' => $tasks->currentPage(),
-                'per_page' => $tasks->perPage(),
-                'total' => $tasks->total(),
-                'last_page' => $tasks->lastPage(),
-            ],
-        );
-    }
-}
-```
-
-## Show Controller
-
-```php
-<?php
-
-namespace App\Http\Controllers\Tasks\V1;
-
-use App\Http\Responses\JsonDataResponse;
-use App\Models\Task;
-use Illuminate\Http\JsonResponse;
-use Spatie\QueryBuilder\QueryBuilder;
-
-final class ShowController
-{
-    public function __invoke(string $task): JsonResponse
-    {
-        $task = QueryBuilder::for(Task::where('id', $task))
-            ->allowedIncludes([
-                'project',
-                'assignee',
-            ])
-            ->firstOrFail();
-
-        return new JsonDataResponse(
-            data: $task,
-        );
-    }
-}
-```
-
-## Update Controller
-
-```php
-<?php
-
-namespace App\Http\Controllers\Tasks\V1;
-
-use App\Actions\Tasks\UpdateTask;
-use App\Http\Requests\Tasks\V1\UpdateTaskRequest;
-use App\Http\Responses\JsonDataResponse;
-use App\Models\Task;
-use Illuminate\Http\JsonResponse;
-
-final readonly class UpdateController
-{
-    public function __construct(
-        private UpdateTask $updateTask,
-    ) {
-    }
-
-    public function __invoke(UpdateTaskRequest $request, Task $task): JsonResponse
-    {
-        $updatedTask = $this->updateTask->handle(
-            task: $task,
-            payload: $request->payload(),
-        );
-
-        return new JsonDataResponse(
-            data: $updatedTask,
-        );
-    }
-}
-```
-
-## Update Action
-
-```php
-<?php
-
-namespace App\Actions\Tasks;
-
-use App\Http\Payloads\Tasks\UpdateTaskPayload;
-use App\Models\Task;
-
-final readonly class UpdateTask
-{
-    public function handle(Task $task, UpdateTaskPayload $payload): Task
-    {
-        $task->update($payload->toArray());
-
-        return $task->fresh();
-    }
-}
-```
-
-## Destroy Controller
-
-```php
-<?php
-
-namespace App\Http\Controllers\Tasks\V1;
-
-use App\Models\Task;
-use Illuminate\Http\JsonResponse;
-
-final class DestroyController
-{
-    public function __invoke(Task $task): JsonResponse
-    {
-        $task->delete();
-
-        return new JsonResponse(status: 204);
-    }
-}
-```
-
-## HTTP Sunset Middleware
-
-```php
-<?php
+declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
@@ -479,7 +542,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-class HttpSunset
+final class HttpSunset
 {
     public function handle(Request $request, Closure $next, string $date): Response
     {
@@ -488,7 +551,7 @@ class HttpSunset
         $response->headers->set('Sunset', $date);
         $response->headers->set(
             'Deprecation',
-            'This API version is deprecated and will be removed on ' . $date
+            'This API version is deprecated and will be removed on ' . $date,
         );
 
         return $response;
@@ -496,81 +559,58 @@ class HttpSunset
 }
 ```
 
-## AppServiceProvider Setup
+## AppServiceProvider setup
 
 ```php
 <?php
+
+declare(strict_types=1);
 
 namespace App\Providers;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\ServiceProvider;
 
-class AppServiceProvider extends ServiceProvider
+final class AppServiceProvider extends ServiceProvider
 {
-    public function register(): void
-    {
-        //
-    }
-
     public function boot(): void
     {
-        // Prevent lazy loading and N+1 queries
+        // Prevent lazy loading and N+1 queries.
         Model::shouldBeStrict();
     }
 }
 ```
 
-## Exception Handler (Problem+JSON)
+## Exception handler (Problem+JSON, RFC 7807)
+
+Convert exceptions — including domain exceptions — to a consistent Problem+JSON envelope. In Laravel 11+ this is configured in `bootstrap/app.php`; the shape below applies wherever you render.
 
 ```php
 <?php
 
+declare(strict_types=1);
+
 namespace App\Exceptions;
 
+use Domain\Task\Exceptions\InvalidStateTransition;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
-class Handler extends ExceptionHandler
+final class ApiExceptionRenderer
 {
-    protected $dontFlash = [
-        'current_password',
-        'password',
-        'password_confirmation',
-    ];
-
-    public function register(): void
+    public function render(Throwable $e): JsonResponse
     {
-        $this->reportable(function (Throwable $e) {
-            //
-        });
-    }
-
-    public function render($request, Throwable $e): JsonResponse
-    {
-        if ($request->is('api/*')) {
-            return $this->renderApiException($e);
-        }
-
-        return parent::render($request, $e);
-    }
-
-    private function renderApiException(Throwable $e): JsonResponse
-    {
-        $status = $this->getStatusCode($e);
-        $title = $this->getTitle($e);
-        $detail = $e->getMessage();
+        $status = $this->statusFor($e);
 
         $problem = [
-            'type' => 'about:blank',
-            'title' => $title,
+            'type'   => 'about:blank',
+            'title'  => $this->titleFor($e),
             'status' => $status,
-            'detail' => $detail,
+            'detail' => $e->getMessage(),
         ];
 
         if ($e instanceof ValidationException) {
@@ -584,74 +624,28 @@ class Handler extends ExceptionHandler
         );
     }
 
-    private function getStatusCode(Throwable $e): int
-    {
-        if ($e instanceof HttpException) {
-            return $e->getStatusCode();
-        }
-
-        if ($e instanceof ModelNotFoundException) {
-            return 404;
-        }
-
-        if ($e instanceof AuthenticationException) {
-            return 401;
-        }
-
-        if ($e instanceof ValidationException) {
-            return 422;
-        }
-
-        return 500;
-    }
-
-    private function getTitle(Throwable $e): string
+    private function statusFor(Throwable $e): int
     {
         return match (true) {
-            $e instanceof ValidationException => 'Validation Failed',
-            $e instanceof ModelNotFoundException => 'Resource Not Found',
-            $e instanceof AuthenticationException => 'Authentication Required',
-            $e instanceof HttpException => $e->getMessage(),
-            default => 'Internal Server Error',
+            $e instanceof ValidationException     => 422,
+            $e instanceof ModelNotFoundException  => 404,
+            $e instanceof AuthenticationException => 401,
+            $e instanceof InvalidStateTransition  => 409,
+            $e instanceof HttpException           => $e->getStatusCode(),
+            default                               => 500,
         };
     }
-}
-```
 
-## Service Class Example (when needed)
-
-```php
-<?php
-
-namespace App\Services;
-
-use App\Actions\Tasks\CreateTask;
-use App\Actions\Tasks\AssignTask;
-use App\Actions\Tasks\NotifyAssignee;
-use App\Http\Payloads\Tasks\StoreTaskPayload;
-use App\Models\Task;
-
-final readonly class TaskService
-{
-    public function __construct(
-        private CreateTask $createTask,
-        private AssignTask $assignTask,
-        private NotifyAssignee $notifyAssignee,
-    ) {
-    }
-
-    /**
-     * Create a task and handle all related side effects
-     */
-    public function createAndAssign(StoreTaskPayload $payload, string $assigneeId): Task
+    private function titleFor(Throwable $e): string
     {
-        $task = $this->createTask->handle($payload);
-
-        $task = $this->assignTask->handle($task, $assigneeId);
-
-        $this->notifyAssignee->handle($task);
-
-        return $task;
+        return match (true) {
+            $e instanceof ValidationException     => 'Validation Failed',
+            $e instanceof ModelNotFoundException  => 'Resource Not Found',
+            $e instanceof AuthenticationException => 'Authentication Required',
+            $e instanceof InvalidStateTransition  => 'Invalid State Transition',
+            $e instanceof HttpException           => $e->getMessage(),
+            default                               => 'Internal Server Error',
+        };
     }
 }
 ```
