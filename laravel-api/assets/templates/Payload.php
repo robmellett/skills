@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Http\Payloads\{Resource};
+namespace Domain\{Domain}\Payloads;
 
 final readonly class {Payload}
 {
     public function __construct(
-        // Define properties
+        // Define promoted public properties
     ) {}
 
     public function toArray(): array

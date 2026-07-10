@@ -2,28 +2,18 @@
 
 declare(strict_types=1);
 
-namespace App\Http\Controllers\{Resource}\V1;
+namespace App\Http\Controllers\{Domain}\V1;
 
-use App\Actions\{Resource}\{Action};
-use App\Http\Requests\{Resource}\V1\{Request};
+use App\Http\Requests\{Domain}\V1\{Request};
 use App\Http\Responses\JsonDataResponse;
-use Illuminate\Http\JsonResponse;
+use Domain\{Domain}\Actions\{Verb}{Domain}Action;
 
-final readonly class {Controller}
+final class {Verb}{Domain}Controller
 {
-    public function __construct(
-        private {Action} ${action},
-    ) {}
-
-    public function __invoke({Request} $request): JsonResponse
+    public function __invoke({Request} $request, {Verb}{Domain}Action $action): JsonDataResponse
     {
-        ${result} = $this->{action}->handle(
-            payload: $request->payload(),
-        );
+        $result = $action($request->payload());
 
-        return new JsonDataResponse(
-            data: ${result},
-            status: 201,
-        );
+        return new JsonDataResponse($result, status: 201);
     }
 }

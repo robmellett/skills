@@ -2,15 +2,21 @@
 
 declare(strict_types=1);
 
-namespace App\Actions\{Resource};
+namespace Domain\{Domain}\Actions;
 
-use App\Http\Payloads\{Resource}\{Payload};
-use App\Models\{Model};
+use Domain\{Domain}\Models\{Model};
+use Domain\{Domain}\Payloads\{Payload};
+use Illuminate\Support\Facades\DB;
 
-final readonly class {Action}
+final readonly class {Verb}{Domain}Action
 {
-    public function handle({Payload} $payload): {Model}
+    // Compose other Actions via constructor injection — never app()/resolve().
+    public function __construct() {}
+
+    public function __invoke({Payload} $payload): {Model}
     {
-        // Implement action logic
+        return DB::transaction(function () use ($payload) {
+            // Implement the business operation (one user story).
+        });
     }
 }

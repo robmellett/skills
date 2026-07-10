@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Models;
+namespace Domain\{Domain}\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -18,6 +18,6 @@ final class {Model} extends Model
     ];
 
     protected $casts = [
-        // Add casts
+        // Cast statuses/types to backed enums, dates to immutable_datetime
     ];
 }
