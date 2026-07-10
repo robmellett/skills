@@ -315,3 +315,4 @@ Namespaces: `Domain\Task\Actions\CreateTaskAction`, `Domain\Task\Payloads\StoreT
 - [ ] No `app()` / `resolve()` calls — dependency injection always
 - [ ] State transitions gated by enum guards or explicit Actions
 - [ ] Tests target Actions and HTTP endpoints, not models
+- [ ] Vendor SDKs are wrapped in `src/Support/<VendorName>/`, never called directly from a Domain
