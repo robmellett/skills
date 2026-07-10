@@ -20,10 +20,10 @@ npx skills@latest add robmellett/skills --skill specific-skill
 ## Maintenance
 
 ```bash
-# PUSH (repo → live). -n = dry run; drop it to apply.
+# PUSH (repo → live)
 rsync -av \
   --exclude='.git/' --exclude='.DS_Store' --exclude='.claude/' \
-  "$HOME/.agents/skills/" "/Users/$USER/Code/robmellett-skills/"
+  "/Users/$USER/Code/robmellett-skills/" "$HOME/.agents/skills/" 
 
 # PULL (live → repo)
 rsync -av --delete  \
@@ -31,7 +31,7 @@ rsync -av --delete  \
   "$HOME/.agents/skills/" "/Users/$USER/Code/robmellett-skills/"
 ```
 
-## Claude
+## Configure Claude
 
 ### Set up symlinks in Claude.
 
