@@ -8,7 +8,8 @@ final readonly class {Payload}
 {
     public function __construct(
         // Define promoted public properties
-    ) {}
+    ) {
+    }
 
     public function toArray(): array
     {
