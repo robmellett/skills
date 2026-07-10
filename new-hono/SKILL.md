@@ -187,6 +187,7 @@ app.get("/", (c) => c.json({ message: "Hello Hono!" }));
 app.get("/users", async (c) => {
   const db = createDb(c.env.DB);
   const result = await db.select().from(users);
+  
   return c.json(result);
 });
  
@@ -194,7 +195,9 @@ app.get("/users", async (c) => {
 app.post("/users", async (c) => {
   const body = await c.req.json<{ name: string; email: string }>();
   const db = createDb(c.env.DB);
+  
   const [user] = await db.insert(users).values(body).returning();
+  
   return c.json(user, 201);
 });
  
