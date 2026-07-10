@@ -1,6 +1,6 @@
 ---
 name: laravel-api
-description: Build production-grade Laravel REST APIs using a pragmatic Domain-Driven Design architecture. Use when building, scaffolding, or reviewing Laravel APIs organised around a src/Domain layer with business-first naming, invokable versioned controllers, Form Request DTOs (Payloads), invokable Action classes, backed-enum state machines, cross-domain boundaries, JWT authentication, and PSR-12/strict-types code quality. Triggers on "build a Laravel API", "create Laravel endpoints", "add API authentication", "review Laravel API code", "refactor Laravel API", "Laravel domain-driven design", or "improve Laravel code quality".
+description: Build production-grade Laravel REST APIs using a pragmatic Domain-Driven Design architecture. Use when building, scaffolding, or reviewing Laravel APIs organised around a src/Domain layer with business-first naming, invokable versioned controllers, Form Request DTOs, invokable Action classes, backed-enum state machines, cross-domain boundaries, Sanctum authentication, and PSR-12/strict-types code quality. Triggers on "build a Laravel API", "create Laravel endpoints", "add API authentication", "review Laravel API code", "refactor Laravel API", "Laravel domain-driven design", or "improve Laravel code quality".
 ---
 
 # Laravel API — Pragmatic Domain-Driven Design
@@ -15,14 +15,14 @@ When a user requests a Laravel API, follow this workflow:
 
 1. **Name the domain in business terms** - What capability is this? Use the product owner's word (`Customer`, not `User`; `Broadcast`, not `Job`).
 2. **Set up the domain layer** - Add the `Domain\` PSR-4 autoload namespace, scaffold `src/Domain/<Domain>/`.
-3. **Build the first operation end-to-end** - Route → Form Request → Payload → Action → Controller → Response to establish the pattern.
-4. **Add authentication** - JWT via PHP Open Source Saver.
+3. **Build the first operation end-to-end** - Route → Form Request → DTO → Action → Controller → Response to establish the pattern.
+4. **Add authentication** - Laravel Sanctum (token-based, `auth:sanctum`).
 5. **Iterate on remaining operations** - Follow the established pattern; one Action per user story.
 
 ## Core Philosophy
 
 1. **Business-first** - The folder tree mirrors the domain language, not framework defaults.
-2. **Stateless by design** - No hidden dependencies; explicit data flow through Payloads.
+2. **Stateless by design** - No hidden dependencies; explicit data flow through DTOs.
 3. **Boundary-first** - HTTP, business logic, and data layers are cleanly separated.
 4. **One operation, one class** - Invokable controllers, invokable Actions, one user story each.
 5. **Version discipline** - Namespace-based versioning (`V1`, `V2`), HTTP Sunset headers for deprecation.
@@ -380,7 +380,7 @@ Create a domain route file at `routes/api/<domain>.php`:
 use App\Http\Controllers\Task\V1;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth:api'])->group(function () {
+Route::middleware(['auth:sanctum'])->group(function () {
     // Reads — direct model queries
     Route::get('/tasks', V1\IndexTaskController::class);
     Route::get('/tasks/{task}', V1\ShowTaskController::class);
@@ -470,31 +470,38 @@ When creating V2:
 3. Add the Sunset middleware to V1 routes:
 
 ```php
-Route::middleware(['auth:api', 'http.sunset:2025-12-31'])->group(function () {
+Route::middleware(['auth:sanctum', 'http.sunset:2025-12-31'])->group(function () {
     // V1 routes
 });
 ```
 
 ## Authentication Setup
 
-Use the PHP Open Source Saver JWT package:
+Use **Laravel Sanctum** for API authentication — never JWT. On Laravel 11+, scaffold the API layer (this installs Sanctum, publishes its migration, and creates `routes/api.php`):
 
 ```bash
-composer require php-open-source-saver/jwt-auth
-php artisan vendor:publish --provider="PHPOpenSourceSaver\JWTAuth\Providers\LaravelServiceProvider"
-php artisan jwt:secret
+php artisan install:api
 ```
 
-Configure the guard in `config/auth.php`:
+Add the `HasApiTokens` trait to the authenticatable model:
 
 ```php
-'guards' => [
-    'api' => [
-        'driver' => 'jwt',
-        'provider' => 'users',
-    ],
-],
+use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+
+final class User extends Authenticatable
+{
+    use HasApiTokens;
+}
 ```
+
+Issue a token (e.g. in a login Action) and return the plain-text value to the client once:
+
+```php
+$token = $user->createToken('api')->plainTextToken;
+```
+
+Protect routes with the `auth:sanctum` middleware. Clients authenticate by sending `Authorization: Bearer {token}`.
 
 ## Essential Setup
 
@@ -547,13 +554,14 @@ composer require laravel/pint --dev
 - Business logic in models.
 - Business logic in controllers, or a controller that both reads and writes.
 - Multiple operations per controller.
-- Passing `array $data` across a boundary instead of a Payload.
+- Passing `array $data` across a boundary instead of a DTO.
 - Accessing request data directly in Actions.
 - `use Domain\Other\Models\...` - cross-domain access must go through Actions.
 - Foreign keys across important domain boundaries.
 - Fetching dependencies via `app()` / `resolve()` / facade roots instead of DI.
 - String statuses via `Rule::in([...])` instead of backed enums with guards.
 - Service classes when Action-to-Action composition would do.
+- JWT for authentication — use Laravel Sanctum.
 - Breaking changes without versioning; inconsistent response formats.
 - Nested ternaries (use `match`); missing type declarations.
 

@@ -206,15 +206,15 @@ Model state with backed enums that own their transition rules, and guard the tra
 1. Add route in `routes/api/<domain>.php`.
 2. Create/extend the model in `Domain\<Domain>\Models`.
 3. Add backed enums in `Domain\<Domain>\Enums` (with transition guards).
-4. Create the Payload in `Domain\<Domain>\Payloads`.
-5. Create the Form Request in `App\Http\Requests\<Domain>\V1` with a `payload()` method.
+4. Create the DTO in `Domain\<Domain>\DTOs`.
+5. Create the Form Request in `App\Http\Requests\<Domain>\V1` with a `dto()` method.
 6. Create the Action in `Domain\<Domain>\Actions`.
 7. Create the invokable Controller in `App\Http\Controllers\<Domain>\V1`.
 
 ### Versioning an operation
 
 1. Create the V2 namespace: `App\Http\Controllers\<Domain>\V2`.
-2. Copy and modify the controller from V1; update Request/Payload if the contract changes.
+2. Copy and modify the controller from V1; update Request/DTO if the contract changes.
 3. Add a V2 route group in `routes/api/<domain>.php`.
 4. Add the Sunset header/middleware to V1 routes.
 

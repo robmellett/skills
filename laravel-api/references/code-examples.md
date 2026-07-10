@@ -530,7 +530,7 @@ Route::middleware(['auth:api'])->group(function () {
 });
 
 // V2 (when needed) — add Sunset middleware to V1 above:
-// Route::middleware(['auth:api', 'http.sunset:2025-12-31'])->group(...)
+// Route::middleware(['auth:sanctum', 'http.sunset:2025-12-31'])->group(...)
 ```
 
 ## HTTP Sunset middleware (`app/Http/Middleware/`)
