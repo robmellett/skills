@@ -300,7 +300,8 @@ final class TaskService
     // 1. Constructor
     public function __construct(
         private TaskRepository $repository,
-    ) {}
+    ) {
+    }
 
     // 2. Public methods
     public function createTask(StoreTaskPayload $payload): Task
@@ -402,7 +403,8 @@ final readonly class CompleteTaskAction
     public function __construct(
         private SendTaskCompletionEmailAction $sendCompletionEmail,
         private RefreshProjectStatusAction $refreshProjectStatus,
-    ) {}
+    ) {
+    }
 
     public function __invoke(Task $task): Task
     {

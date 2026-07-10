@@ -182,7 +182,8 @@ final readonly class StoreTaskPayload
         public string $title,
         public ?CarbonImmutable $dueAt,
         public Priority $priority,
-    ) {}
+    ) {
+    }
 
     public function toArray(): array
     {
@@ -206,7 +207,8 @@ final readonly class CreateTaskAction
 {
     public function __construct(
         private RecordTaskCreatedAction $recordAuditTrail,
-    ) {}
+    ) {
+    }
 
     public function __invoke(StoreTaskPayload $payload): Task
     {
@@ -265,7 +267,8 @@ final readonly class JsonDataResponse implements Responsable
         private mixed $data,
         private ?array $meta = null,
         private int $status = 200,
-    ) {}
+    ) {
+    }
 
     public function toResponse($request): JsonResponse
     {
