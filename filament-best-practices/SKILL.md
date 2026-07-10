@@ -72,8 +72,6 @@ class CustomerForm
 }
 ```
 
-Call it from the resource:
-
 ```php
 use App\Filament\Resources\Customers\Schemas\CustomerForm;
 use Filament\Schemas\Schema;
@@ -84,12 +82,10 @@ public static function form(Schema $schema): Schema
 }
 ```
 
-Do the same for `table()` (e.g. `CustomersTable::configure($table)`) and `infolist()` (e.g. `CustomerInfolist::configure($schema)`).
+Do the same for `table()` (`CustomersTable::configure($table)`) and `infolist()` (`CustomerInfolist::configure($schema)`). Keep these classes with **no parent class or interface** — that is deliberate, so you can add your own parameters and reuse a class in several places with slight tweaks.
 
-Keep these classes with **no parent class or interface**. That is deliberate: without an enforced `configure()` signature you can add your own parameters and reuse the same class in multiple places with slight tweaks.
-
-### 2. Component classes
-When a `configure()` method is still long — often because individual components need a lot of configuration — extract each heavily-configured component into its own class with a static `make()` factory that returns the configured component.
+### Lever 2 — Component classes
+When a `configure()` method is still long because individual components need a lot of configuration, extract each heavily-configured component into its own class with a static `make()` factory that returns the configured component:
 
 ```php
 namespace App\Filament\Resources\Customers\Schemas\Components;
@@ -110,26 +106,10 @@ class CustomerNameInput
 }
 ```
 
-Use it wherever the component is expected:
+Then drop `CustomerNameInput::make()` into any `->components([...])`. The same pattern covers columns, filters, and actions — an action class returns a configured `Filament\Actions\Action` from `make()` and drops into `getHeaderActions()` or a table's `recordActions()`. Full `EmailCustomerAction` example: `references/filament-code-quality-tips.md`.
 
-```php
-use App\Filament\Resources\Customers\Schemas\Components\CustomerNameInput;
-use Filament\Schemas\Schema;
-
-public static function configure(Schema $schema): Schema
-{
-    return $schema
-        ->components([
-            CustomerNameInput::make(),
-            // ...
-        ]);
-}
-```
-
-The same pattern works for columns, filters, and actions. An action class returns a configured `Filament\Actions\Action` from `make()` and drops into `getHeaderActions()` on a page or `recordActions()` on a table. See `references/filament-code-quality-tips.md` for the full `EmailCustomerAction` example.
-
-## Naming and location conventions
-No rules are enforced, but follow these conventions for consistency (all directories are relative to the resource):
+### Naming and location conventions
+No rules are enforced, but follow these for consistency (directories are relative to the resource):
 
 | Component type | Directory | Naming |
 | --- | --- | --- |
