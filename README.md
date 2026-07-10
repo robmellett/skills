@@ -21,14 +21,14 @@ npx skills@latest add robmellett/skills --skill specific-skill
 
 ```bash
 # PUSH (repo → live). -n = dry run; drop it to apply.
-rsync -avn --delete \
+rsync -av \
   --exclude='.git/' --exclude='.DS_Store' --exclude='.claude/' \
-  "/Users/rob/Code/robmellett-skills"/ "~/.agents/skills"/
+  "$HOME/.agents/skills/" "/Users/$USER/Code/robmellett-skills/"
 
 # PULL (live → repo)
 rsync -av --delete  \
   --exclude='.git/' --exclude='.DS_Store' --exclude='.claude/' --exclude="README.md" \
-  "$HOME/.agents/skills/" "/Users/rob/Code/robmellett-skills/"
+  "$HOME/.agents/skills/" "/Users/$USER/Code/robmellett-skills/"
 ```
 
 ## Claude
