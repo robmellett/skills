@@ -1,139 +1,395 @@
 ---
 name: laravel-api
-description: Build production-grade Laravel REST APIs using opinionated architecture patterns with Laravel best practices. Use when building, scaffoling, or reviewing Laravel APIs with specifications for stateless design, versioned endpoints, invokable controllers, Form Request DTOs, Action classes, JWT authentication, and PSR-12 code quality standards. Triggers on "build a Laravel API", "create Laravel endpoints", "add API authentication", "review Laravel API code", "refactor Laravel API", or "improve Laravel code quality".
+description: Build production-grade Laravel REST APIs using a pragmatic Domain-Driven Design architecture. Use when building, scaffolding, or reviewing Laravel APIs organised around a src/Domain layer with business-first naming, invokable versioned controllers, Form Request DTOs (Payloads), invokable Action classes, backed-enum state machines, cross-domain boundaries, JWT authentication, and PSR-12/strict-types code quality. Triggers on "build a Laravel API", "create Laravel endpoints", "add API authentication", "review Laravel API code", "refactor Laravel API", "Laravel domain-driven design", or "improve Laravel code quality".
 ---
 
-# Laravel API - Steve's Architecture
+# Laravel API — Pragmatic Domain-Driven Design
 
-Build Laravel REST APIs with clean, stateless, resource-scoped architecture.
+Build Laravel REST APIs where the folder tree reads like the product owner's vocabulary. A new engineer should be able to find any business operation in under 10 seconds.
+
+This architecture is inspired by Spatie's _Laravel Beyond CRUD_ but deliberately simplified: **no `laravel-data`, no `laravel-model-states`, no view models**. Pragmatism over purity — calibrated for real-world projects.
 
 ## Quick Start
 
-When user requests a Laravel API, follow this workflow:
+When a user requests a Laravel API, follow this workflow:
 
-1. **Understand requirements** - What resources? What operations? Authentication needed?
-2. **Initialize project structure** - Set up routing, remove frontend bloat
-3. **Build first resource** - Complete CRUD to establish pattern
-4. **Add authentication** - JWT via PHP Open Source Saver
-5. **Iterate on remaining resources** - Follow established pattern
+1. **Name the domain in business terms** - What capability is this? Use the product owner's word (`Customer`, not `User`; `Broadcast`, not `Job`).
+2. **Set up the domain layer** - Add the `Domain\` PSR-4 autoload namespace, scaffold `src/Domain/<Domain>/`.
+3. **Build the first operation end-to-end** - Route → Form Request → Payload → Action → Controller → Response to establish the pattern.
+4. **Add authentication** - JWT via PHP Open Source Saver.
+5. **Iterate on remaining operations** - Follow the established pattern; one Action per user story.
 
-## Core Architecture Principles
+## Core Philosophy
 
-Read `references/architecture.md` for comprehensive details. Key principles:
+1. **Business-first** - The folder tree mirrors the domain language, not framework defaults.
+2. **Stateless by design** - No hidden dependencies; explicit data flow through Payloads.
+3. **Boundary-first** - HTTP, business logic, and data layers are cleanly separated.
+4. **One operation, one class** - Invokable controllers, invokable Actions, one user story each.
+5. **Version discipline** - Namespace-based versioning (`V1`, `V2`), HTTP Sunset headers for deprecation.
 
-1. **Stateless by design** - No hidden dependencies, explicit data flow
-2. **Boundary-first** - Clear separation of HTTP, business logic, data layers
-3. **Resource-scoped** - Routes, controllers organized by resource
-4. **Version discipline** - Namespace-based versioning, HTTP Sunset headers
+## Directory Structure
 
-## Code Quality Standards
+The **domain (business) layer** lives in `src/Domain/` under the `Domain\` namespace. The **HTTP layer** stays in `app/Http/` under the `App\` namespace. HTTP may depend on Domain; Domain never depends on HTTP.
 
-All code must follow Laravel best practices and PSR-12 standards:
-
-1. **Preserve Functionality** - Refactorings change HOW code works, never WHAT it does
-2. **Explicit Over Implicit** - Prefer clear, readable code over clever shortcuts
-3. **Type Declarations** - Always use return types on methods, parameter types where beneficial
-4. **Avoid Nested Ternaries** - Use match expressions, switch, or if/else for clarity
-5. **Consistent Naming** - Follow PSR-12 and Laravel conventions strictly
-6. **Proper Namespacing** - Organize imports logically, use full type hints
-
-**When reviewing or refactoring code:**
-- Focus on clarity and maintainability over cleverness
-- Simplify complex nested logic into readable structures
-- Extract magic values into named constants or config
-- Remove unnecessary complexity while preserving exact behavior
-
-## Project Structure
+### Domain layer - `src/Domain/<DomainName>/`
 
 ```
-routes/api/
-  routes.php              # Main entry point, version grouping
-  tasks.php               # All task routes, all versions
-  projects.php            # All project routes, all versions
+src/Domain/<DomainName>/
+├── Actions/             ← business operations (invokable)
+├── Payloads/            ← typed DTOs (consumed by HTTP, Jobs, CLI)
+├── Models/              ← Eloquent — data access only
+├── Enums/               ← status, type, role values
+├── Events/              ← domain events (optional)
+└── Exceptions/          ← domain exceptions (optional)
+```
 
+### HTTP layer - `app/Http/`
+
+```
 app/Http/
-  Controllers/{Resource}/V1/
-    StoreController.php   # Always invokable
-    IndexController.php
-    ShowController.php
-  Requests/{Resource}/V1/
-    StoreTaskRequest.php  # Validation + payload() method
-  Payloads/{Resource}/
-    StoreTaskPayload.php  # Simple DTOs with toArray()
-  Responses/
-    JsonDataResponse.php  # Implements Responsable
-    JsonErrorResponse.php
-  Middleware/
-    HttpSunset.php
+├── Controllers/<Domain>/V1/  ← invokable, versioned
+├── Requests/<Domain>/V1/     ← validation + payload()
+├── Responses/                ← shared Responsable classes
+└── Middleware/
+    └── HttpSunset.php
 
-app/Actions/{Resource}/
-  CreateTask.php          # Single-purpose business logic
-
-app/Services/             # Only when logic too complex for Actions
-
-app/Models/
-  Task.php                # HasUlids trait, simple data access
+routes/api/
+├── routes.php                ← main entry point, version grouping
+└── <domain>.php              ← all routes for a domain, all versions
 ```
 
-## Building a New Resource Endpoint
+### Composer autoload
 
-### Step 1: Model
+Register the `Domain\` namespace in `composer.json`, then dump the autoloader:
 
-Always use ULIDs. Keep models simple - data access only.
-
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Models;
-
-use Illuminate\Database\Eloquent\Concerns\HasUlids;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-
-final class Task extends Model
-{
-    use HasFactory;
-    use HasUlids;
-    
-    protected $fillable = [
-        'title',
-        'description',
-        'status',
-        'project_id',
-    ];
-
-    protected $casts = [
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-    ];
-
-    public function project(): BelongsTo
-    {
-        return $this->belongsTo(Project::class);
+```json
+"autoload": {
+    "psr-4": {
+        "App\\": "app/",
+        "Domain\\": "src/Domain/"
     }
 }
 ```
 
-### Step 2: Routes
+```bash
+composer dump-autoload
+```
 
-Create resource route file at `routes/api/{resource}.php`:
+### Example layout for a `Task` domain
+
+```
+src/Domain/Task/
+├── Actions/
+│   ├── CreateTaskAction.php
+│   ├── CompleteTaskAction.php
+│   └── RecordTaskCreatedAction.php
+├── Payloads/
+│   └── StoreTaskPayload.php
+├── Models/
+│   └── Task.php
+├── Enums/
+│   ├── TaskStatus.php
+│   └── Priority.php
+└── Exceptions/
+    └── InvalidStateTransition.php
+
+app/Http/
+├── Controllers/Task/V1/
+│   ├── IndexTaskController.php
+│   ├── ShowTaskController.php
+│   └── StoreTaskController.php
+├── Requests/Task/V1/
+│   └── StoreTaskRequest.php
+└── Responses/
+    ├── JsonDataResponse.php
+    └── JsonErrorResponse.php
+```
+
+Resulting namespaces:
+- `Domain\Task\Actions\CreateTaskAction`
+- `Domain\Task\Payloads\StoreTaskPayload`
+- `App\Http\Controllers\Task\V1\StoreTaskController`
+
+## Architectural Rules
+
+### Rule 1 - Business-first naming
+
+Replace technical defaults with the product owner's vocabulary:
+
+| Framework default | Business name |
+|---|---|
+| `User` | `Customer` |
+| `Job` | `Broadcast` |
+| `Task` | `AutomationStep` |
+
+Domains are **singular** (`Task`, not `Tasks`).
+
+### Rule 2 - Invokable controllers, one operation per class
+
+One controller per operation, one `__invoke()` method. Versioned under `V1/`, `V2/` so breaking changes ship safely.
+
+> **Controllers have one job — wire the request to the action and shape the response. No business logic, no model writes.**
+
+The Action is **method-injected** into `__invoke()` and called directly:
 
 ```php
-use App\Http\Controllers\Tasks\V1;
+final class StoreTaskController
+{
+    public function __invoke(StoreTaskRequest $request, CreateTaskAction $action): JsonDataResponse
+    {
+        $task = $action($request->payload());
+
+        return new JsonDataResponse($task, status: 201);
+    }
+}
+```
+
+### Rule 3 - Form Requests carry the payload
+
+Validation **and** DTO construction happen in the `FormRequest`. The `payload()` method returns a typed Payload:
+
+```php
+final class StoreTaskRequest extends FormRequest
+{
+    public function rules(): array
+    {
+        return [
+            'title'    => ['required', 'string', 'max:200'],
+            'due_at'   => ['nullable', 'date'],
+            'priority' => ['required', new Enum(Priority::class)],
+        ];
+    }
+
+    public function payload(): StoreTaskPayload
+    {
+        return new StoreTaskPayload(
+            title: $this->validated('title'),
+            dueAt: $this->date('due_at')?->toImmutable(),
+            priority: Priority::from($this->validated('priority')),
+        );
+    }
+}
+```
+
+### Rule 4 - Payloads are the boundary DTOs
+
+Plain `final readonly class` with promoted public properties — no external DTO libraries. Payloads live in the **domain** so HTTP, Jobs, and CLI can all consume them.
+
+```php
+final readonly class StoreTaskPayload
+{
+    public function __construct(
+        public string $title,
+        public ?CarbonImmutable $dueAt,
+        public Priority $priority,
+    ) {}
+
+    public function toArray(): array
+    {
+        return [
+            'title'    => $this->title,
+            'due_at'   => $this->dueAt,
+            'priority' => $this->priority->value,
+        ];
+    }
+}
+```
+
+> **All communication between layers happens through Payloads. Never pass `array $data` across a boundary.**
+
+### Rule 5 - Actions are business operations
+
+One operation per class, invokable, composed via constructor injection. Wrap multi-write operations in `DB::transaction()`.
+
+```php
+final readonly class CreateTaskAction
+{
+    public function __construct(
+        private RecordTaskCreatedAction $recordAuditTrail,
+    ) {}
+
+    public function __invoke(StoreTaskPayload $payload): Task
+    {
+        return DB::transaction(function () use ($payload) {
+            $task = Task::create($payload->toArray());
+
+            ($this->recordAuditTrail)($task);
+
+            return $task;
+        });
+    }
+}
+```
+
+Conventions:
+- Naming: `{Verb}{Domain}Action` (e.g. `CreateTaskAction`).
+- Single `__invoke()` - use `handle()` only for queue-job parity.
+- Compose other Actions via constructor injection - never `app()` or `resolve()` in the body.
+- Guard preconditions early; throw domain exceptions.
+
+> **One action = one user story. If the name doesn't describe a thing a stakeholder might ask for, it's the wrong shape.**
+
+A `Service` class is a rare escape hatch — reach for it only when orchestrating many Actions is genuinely too much for Action-to-Action composition. Prefer composing Actions.
+
+### Rule 6 - Models are data access only
+
+Relationships, casts, and accessors only — no business logic. Use ULIDs over auto-increment IDs for sortability and URL safety.
+
+```php
+final class Task extends Model
+{
+    use HasFactory;
+    use HasUlids;
+
+    protected $casts = [
+        'priority' => Priority::class,
+        'status'   => TaskStatus::class,
+        'due_at'   => 'immutable_datetime',
+    ];
+
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+}
+```
+
+### Rule 7 - Responses via `Responsable`
+
+Consistent JSON envelopes through `Responsable` classes. Base success shape is `{ "data": ... }` with optional `{ "meta": ... }`:
+
+```php
+final readonly class JsonDataResponse implements Responsable
+{
+    public function __construct(
+        private mixed $data,
+        private ?array $meta = null,
+        private int $status = 200,
+    ) {}
+
+    public function toResponse($request): JsonResponse
+    {
+        $response = ['data' => $this->data];
+
+        if ($this->meta !== null) {
+            $response['meta'] = $this->meta;
+        }
+
+        return new JsonResponse($response, $this->status);
+    }
+}
+```
+
+Pair with `JsonErrorResponse` for a consistent error envelope (see Response Format below).
+
+### Rule 8 - State management via enums + guards
+
+Use backed enums with transition logic instead of a state-machine package:
+
+```php
+enum TaskStatus: string
+{
+    case Draft     = 'draft';
+    case Active    = 'active';
+    case Completed = 'completed';
+
+    public function canTransitionTo(self $next): bool
+    {
+        return match ($this) {
+            self::Draft     => $next === self::Active,
+            self::Active    => $next === self::Completed,
+            self::Completed => false,
+        };
+    }
+}
+```
+
+Guard the transition inside the Action:
+
+```php
+final readonly class CompleteTaskAction
+{
+    public function __invoke(Task $task): Task
+    {
+        throw_unless(
+            $task->status->canTransitionTo(TaskStatus::Completed),
+            new InvalidStateTransition(
+                "Task {$task->id} cannot be completed from {$task->status->value}",
+            ),
+        );
+
+        $task->update(['status' => TaskStatus::Completed]);
+
+        return $task;
+    }
+}
+```
+
+Only adopt `spatie/laravel-model-states` if transitions grow complex with side effects or parallel states.
+
+### Rule 9 - Lightweight CQRS at the controller level
+
+Split reads from writes at the **controller** layer, not the query builder:
+- **Read** controllers - `IndexTaskController`, `ShowTaskController` → query models directly (Spatie Query Builder is ideal here).
+- **Write** controllers - `StoreTaskController`, `UpdateTaskController`, `DestroyTaskController` → always go through an Action.
+
+> **A controller either reads or writes. Never both.**
+
+## PHP Style Requirements
+
+These are mandatory, not optional:
+
+- `declare(strict_types=1);` at the top of **every** file.
+- `final readonly class` by default (drop `readonly` only when mutation is necessary — e.g. Eloquent models, which are `final class`).
+- Constructor property promotion always.
+- Return types and parameter types on **every** method.
+- PSR-12 formatting.
+- `match` instead of nested ternaries or `if`/`elseif` chains.
+- **Never** call `app()`, `resolve()`, `Container::make()`, or facade roots to fetch dependencies inside classes — always use dependency injection. (`DB::transaction()` as a transaction boundary is fine.)
+- Models use ULIDs.
+
+## Cross-Domain Boundaries
+
+- Cross-domain calls go through **Actions**, not raw model relationships.
+- A domain exposes a few public Actions; everything else stays private.
+- Domain Actions may call other domains' Actions, but must **never** `use Domain\Other\Models\...` directly.
+- Avoid foreign keys across important boundaries (e.g. billing → CRM) — bridge with IDs and explicit lookups.
+
+## Naming Reference
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| Action | `{Verb}{Domain}Action` | `CreateTaskAction` |
+| Controller | `{Verb}{Domain}Controller` | `StoreTaskController` |
+| Request | `{Verb}{Domain}Request` | `StoreTaskRequest` |
+| Payload | `{Verb}{Domain}Payload` | `StoreTaskPayload` |
+| Response | `{Shape}Response` | `JsonDataResponse`, `JsonErrorResponse` |
+| Enum | `{Concept}{Suffix}` | `TaskStatus`, `Priority` |
+| Exception | `{Problem}Exception` | `InvalidStateTransition` |
+
+## Building a New Domain Operation
+
+### Step 1 - Routes
+
+Create a domain route file at `routes/api/<domain>.php`:
+
+```php
+use App\Http\Controllers\Task\V1;
+use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:api'])->group(function () {
-    Route::get('/tasks', V1\IndexController::class);
-    Route::post('/tasks', V1\StoreController::class);
-    Route::get('/tasks/{task}', V1\ShowController::class);
-    Route::patch('/tasks/{task}', V1\UpdateController::class);
-    Route::delete('/tasks/{task}', V1\DestroyController::class);
+    // Reads — direct model queries
+    Route::get('/tasks', V1\IndexTaskController::class);
+    Route::get('/tasks/{task}', V1\ShowTaskController::class);
+
+    // Writes — through Actions
+    Route::post('/tasks', V1\StoreTaskController::class);
+    Route::patch('/tasks/{task}', V1\UpdateTaskController::class);
+    Route::delete('/tasks/{task}', V1\DestroyTaskController::class);
 });
 ```
 
-Include in `routes/api/routes.php`:
+Include it from `routes/api/routes.php`:
 
 ```php
 Route::prefix('v1')->group(function () {
@@ -141,175 +397,64 @@ Route::prefix('v1')->group(function () {
 });
 ```
 
-### Step 3: DTO (Payload)
+### Step 2 - Model (`src/Domain/<Domain>/Models/`)
 
-Create at `app/Http/Payloads/{Resource}/{Operation}Payload.php`:
+ULIDs, enum casts, relationships. Data access only. See Rule 6.
 
-```php
-<?php
+### Step 3 - Enums (`src/Domain/<Domain>/Enums/`)
 
-declare(strict_types=1);
+Backed enums for status/type/role, with `canTransitionTo()` guards where state matters. See Rule 8.
 
-namespace App\Http\Payloads\Tasks;
+### Step 4 - Payload (`src/Domain/<Domain>/Payloads/`)
 
-final readonly class StoreTaskPayload
-{
-    public function __construct(
-        public string $title,
-        public ?string $description,
-        public string $status,
-        public string $projectId,
-    ) {}
+`final readonly` DTO with promoted properties and `toArray()`. See Rule 4.
 
-    public function toArray(): array
-    {
-        return [
-            'title' => $this->title,
-            'description' => $this->description,
-            'status' => $this->status,
-            'project_id' => $this->projectId,
-        ];
-    }
-}
-```
+### Step 5 - Form Request (`app/Http/Requests/<Domain>/V1/`)
 
-### Step 4: Form Request
+Validation rules + `payload()` returning the DTO. See Rule 3.
 
-Create at `app/Http/Requests/{Resource}/V1/{Operation}Request.php`:
+### Step 6 - Action (`src/Domain/<Domain>/Actions/`)
 
-```php
-<?php
+Invokable, `{Verb}{Domain}Action`, `DB::transaction()` for multi-write. See Rule 5.
 
-declare(strict_types=1);
+### Step 7 - Controller (`app/Http/Controllers/<Domain>/V1/`)
 
-namespace App\Http\Requests\Tasks\V1;
-
-use App\Http\Payloads\Tasks\StoreTaskPayload;
-use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
-
-final class StoreTaskRequest extends FormRequest
-{
-    public function authorize(): bool
-    {
-        return true;
-    }
-
-    public function rules(): array
-    {
-        return [
-            'title' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'status' => ['required', Rule::in(['pending', 'in_progress', 'completed'])],
-            'project_id' => ['required', 'string', 'exists:projects,id'],
-        ];
-    }
-
-    public function payload(): StoreTaskPayload
-    {
-        return new StoreTaskPayload(
-            title: $this->string('title')->toString(),
-            description: $this->string('description')->toString(),
-            status: $this->string('status')->toString(),
-            projectId: $this->string('project_id')->toString(),
-        );
-    }
-}
-```
-
-### Step 5: Action
-
-Create at `app/Actions/{Resource}/{Operation}.php`:
-
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Actions\Tasks;
-
-use App\Http\Payloads\Tasks\StoreTaskPayload;
-use App\Models\Task;
-
-final readonly class CreateTask
-{
-    public function handle(StoreTaskPayload $payload): Task
-    {
-        return Task::create($payload->toArray());
-    }
-}
-```
-
-### Step 6: Controller
-
-Create invokable controller at `app/Http/Controllers/{Resource}/V1/{Operation}Controller.php`:
-
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Http\Controllers\Tasks\V1;
-
-use App\Actions\Tasks\CreateTask;
-use App\Http\Requests\Tasks\V1\StoreTaskRequest;
-use App\Http\Responses\JsonDataResponse;
-use Illuminate\Http\JsonResponse;
-
-final readonly class StoreController
-{
-    public function __construct(
-        private CreateTask $createTask,
-    ) {}
-
-    public function __invoke(StoreTaskRequest $request): JsonResponse
-    {
-        $task = $this->createTask->handle(
-            payload: $request->payload(),
-        );
-
-        return new JsonDataResponse(
-            data: $task,
-            status: 201,
-        );
-    }
-}
-```
+Invokable, method-injects the Action, returns a `Responsable`. See Rule 2.
 
 ## Response Format
-
-Standard format for all responses:
 
 **Success:**
 ```json
 {
-    "data": {...},
-    "meta": {...}
+    "data": {},
+    "meta": {}
 }
 ```
 
-**Error (Problem+JSON):**
+**Error (Problem+JSON, RFC 7807):**
 ```json
 {
     "type": "about:blank",
     "title": "Validation Failed",
     "status": 422,
     "detail": "The given data was invalid",
-    "errors": {...}
+    "errors": {}
 }
 ```
 
-## Query Building
+Convert exceptions to Problem+JSON in the application exception handler (see `references/code-examples.md`).
 
-Use Spatie Query Builder for filtering, sorting, includes:
+## Query Building (read controllers)
+
+Use Spatie Query Builder on the read side for filtering, sorting, and includes:
 
 ```php
 use Spatie\QueryBuilder\QueryBuilder;
 
 $tasks = QueryBuilder::for(Task::class)
     ->allowedFilters(['status', 'priority'])
-    ->allowedSorts(['created_at', 'due_date'])
-    ->allowedIncludes(['project', 'assignee'])
+    ->allowedSorts(['created_at', 'due_at'])
+    ->allowedIncludes(['project', 'owner'])
     ->paginate();
 ```
 
@@ -317,9 +462,9 @@ $tasks = QueryBuilder::for(Task::class)
 
 When creating V2:
 
-1. Create V2 namespace: `App\Http\Controllers\Tasks\V2\`
-2. Add V2 route group in resource file
-3. Add Sunset middleware to V1 routes:
+1. Create the V2 namespace: `App\Http\Controllers\Task\V2\`.
+2. Add a V2 route group in the domain route file.
+3. Add the Sunset middleware to V1 routes:
 
 ```php
 Route::middleware(['auth:api', 'http.sunset:2025-12-31'])->group(function () {
@@ -329,7 +474,7 @@ Route::middleware(['auth:api', 'http.sunset:2025-12-31'])->group(function () {
 
 ## Authentication Setup
 
-Use PHP Open Source Saver JWT package:
+Use the PHP Open Source Saver JWT package:
 
 ```bash
 composer require php-open-source-saver/jwt-auth
@@ -337,7 +482,7 @@ php artisan vendor:publish --provider="PHPOpenSourceSaver\JWTAuth\Providers\Lara
 php artisan jwt:secret
 ```
 
-Configure in `config/auth.php`:
+Configure the guard in `config/auth.php`:
 
 ```php
 'guards' => [
@@ -350,18 +495,18 @@ Configure in `config/auth.php`:
 
 ## Essential Setup
 
-Add to `app/Providers/AppServiceProvider.php`:
+Enable strict mode in `app/Providers/AppServiceProvider.php` to catch N+1 queries early:
 
 ```php
 use Illuminate\Database\Eloquent\Model;
 
 public function boot(): void
 {
-    Model::shouldBeStrict(); // Prevent N+1 queries
+    Model::shouldBeStrict();
 }
 ```
 
-Register HttpSunset middleware in `app/Http/Kernel.php`:
+Register the HttpSunset middleware alias:
 
 ```php
 protected $middlewareAliases = [
@@ -371,42 +516,54 @@ protected $middlewareAliases = [
 
 ## Anti-Patterns to Avoid
 
-- Using auto-increment IDs instead of ULIDs
-- Business logic in models
-- Multiple actions per controller
-- Accessing request data directly in controllers/actions
-- Hidden query scopes
-- Service classes when an Action would suffice
-- Breaking changes without versioning
-- Inconsistent response formats
-- Nested ternary operators (use match expressions instead)
-- Missing type declarations on methods and parameters
-- Overly compact "clever" code that sacrifices readability
+- Auto-increment IDs instead of ULIDs.
+- Business logic in models.
+- Business logic in controllers, or a controller that both reads and writes.
+- Multiple operations per controller.
+- Passing `array $data` across a boundary instead of a Payload.
+- Accessing request data directly in Actions.
+- `use Domain\Other\Models\...` - cross-domain access must go through Actions.
+- Foreign keys across important domain boundaries.
+- Fetching dependencies via `app()` / `resolve()` / facade roots instead of DI.
+- String statuses via `Rule::in([...])` instead of backed enums with guards.
+- Service classes when Action-to-Action composition would do.
+- Breaking changes without versioning; inconsistent response formats.
+- Nested ternaries (use `match`); missing type declarations.
+
+## Pre-Ship Checklist
+
+- [ ] Every business operation lives in an Action.
+- [ ] Controllers wire only Request → Action → Response.
+- [ ] No `array $data` crossing boundaries — Payloads everywhere.
+- [ ] Form Requests carry validation **and** the `payload()` method.
+- [ ] Models contain no business logic.
+- [ ] `declare(strict_types=1)` on every file.
+- [ ] Every class is `final` (and `readonly` where applicable).
+- [ ] No `app()` / `resolve()` / facade-root dependency fetching — DI everywhere.
+- [ ] State transitions gated by enum guards or explicit Actions.
+- [ ] Cross-domain access goes through Actions, never foreign models.
+- [ ] Tests target Actions and HTTP endpoints, not models.
 
 ## Code Review & Refactoring
 
-When reviewing or refactoring Laravel API code, apply these principles:
+When reviewing or refactoring, apply these in order:
 
-### Simplification Checklist
+1. **Preserve functionality** - refactorings change HOW, never WHAT.
+2. **Check type safety** - return types, parameter types, `declare(strict_types=1)`.
+3. **Simplify logic** - replace nested ternaries with `match`.
+4. **Extract complexity** - move complex conditions into named methods.
+5. **Verify boundaries** - Payloads across layers, Actions for cross-domain, no facade-root DI.
+6. **Improve naming** - business-first, matching the naming table.
 
-1. **Preserve Functionality** - Ensure refactorings don't change behavior
-2. **Check Type Safety** - Add missing return types and parameter types
-3. **Simplify Logic** - Replace nested ternaries with match expressions
-4. **Extract Complexity** - Move complex conditions into named methods
-5. **Verify Standards** - Ensure PSR-12 compliance with declare(strict_types=1)
-6. **Improve Naming** - Use descriptive names that reveal intent
-
-### Match Expression Pattern
-
-Replace nested ternaries with match for clarity:
+### Match over nested ternaries
 
 ```php
-// ❌ Avoid: Nested ternary
-$status = $task->completed_at 
+// ❌ Avoid: nested ternary
+$status = $task->completed_at
     ? ($task->verified ? 'verified' : 'completed')
     : ($task->started_at ? 'in_progress' : 'pending');
 
-// ✅ Prefer: Match expression
+// ✅ Prefer: match expression
 $status = match (true) {
     $task->completed_at && $task->verified => 'verified',
     $task->completed_at => 'completed',
@@ -417,9 +574,9 @@ $status = match (true) {
 
 ## References
 
-- **architecture.md** - Comprehensive architectural patterns and principles
-- **code-examples.md** - Complete working examples for every component
-- **code-quality.md** - Laravel best practices, refactoring patterns, and PSR-12 standards
+- **architecture.md** - comprehensive architectural patterns, the domain/HTTP split, and boundary rules.
+- **code-examples.md** - complete working examples for every component.
+- **code-quality.md** - Laravel best practices, refactoring patterns, and PSR-12 standards.
 
 ## Templates
 
