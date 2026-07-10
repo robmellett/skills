@@ -67,6 +67,18 @@ final readonly class TaskService
 }
 ```
 
+### 4. Mandatory Style Rules
+
+These are non-negotiable in this architecture:
+
+- `declare(strict_types=1);` at the top of every file.
+- `final readonly class` by default — drop `readonly` only when mutation is necessary (e.g. Eloquent models, which are `final class`).
+- Constructor property promotion always.
+- Return types and parameter types on every method.
+- `match` instead of nested ternaries or `if`/`elseif` chains.
+- Never fetch dependencies via `app()`, `resolve()`, `Container::make()`, or facade roots — use dependency injection. (`DB::transaction()` as a transaction boundary is fine.)
+- Models use ULIDs.
+
 ## Refactoring Patterns
 
 ### Match Expressions Over Nested Ternaries
@@ -238,13 +250,13 @@ Every PHP file should follow this structure:
 
 declare(strict_types=1);
 
-namespace App\Http\Controllers\Tasks\V1;
+namespace App\Http\Controllers\Task\V1;
 
-use App\Actions\Tasks\CreateTask;
-use App\Http\Requests\Tasks\V1\StoreTaskRequest;
-use Illuminate\Http\JsonResponse;
+use App\Http\Requests\Task\V1\StoreTaskRequest;
+use App\Http\Responses\JsonDataResponse;
+use Domain\Task\Actions\CreateTaskAction;
 
-final readonly class StoreController
+final class StoreTaskController
 {
     // Class contents
 }
@@ -262,9 +274,11 @@ final readonly class StoreController
 
 **Classes:**
 - Use PascalCase
-- Controllers: `{Resource}{Action}Controller` (e.g., `StoreTaskController`)
-- Actions: `{Action}{Resource}` (e.g., `CreateTask`)
-- DTOs: `{Action}{Resource}Payload` (e.g., `StoreTaskPayload`)
+- Controllers: `{Verb}{Domain}Controller` (e.g., `StoreTaskController`)
+- Actions: `{Verb}{Domain}Action` (e.g., `CreateTaskAction`)
+- Payloads: `{Verb}{Domain}Payload` (e.g., `StoreTaskPayload`)
+- Enums: `{Concept}{Suffix}` (e.g., `TaskStatus`, `Priority`)
+- Exceptions: `{Problem}Exception` (e.g., `InvalidStateTransition`)
 
 **Methods:**
 - Use camelCase
@@ -330,10 +344,13 @@ When reviewing Laravel API code, check for:
 - [ ] Variable and method names are descriptive
 
 ### Laravel Conventions
-- [ ] Models use HasUlids trait
-- [ ] Controllers are invokable with single responsibility
-- [ ] Form Requests have payload() method returning DTO
-- [ ] Actions have single handle() method
+- [ ] Domain classes live in `Domain\<Domain>\...`; HTTP classes in `App\Http\...`
+- [ ] Models use HasUlids trait and cast statuses/types to backed enums
+- [ ] Controllers are invokable, single responsibility, and either read or write (never both)
+- [ ] Form Requests have payload() method returning a domain Payload
+- [ ] Actions are invokable (`__invoke()`), named `{Verb}{Domain}Action`
+- [ ] Dependencies injected — no `app()` / `resolve()` / facade-root fetching
+- [ ] Cross-domain access goes through Actions, never foreign models
 - [ ] Response classes implement Responsable
 
 ### Structure
@@ -347,7 +364,7 @@ When reviewing Laravel API code, check for:
 - [ ] No business logic in models
 - [ ] No direct request access in controllers/actions
 - [ ] Explicit eager loading (no N+1 queries)
-- [ ] API routes versioned and scoped by resource
+- [ ] API routes versioned and scoped by domain
 
 ## Refactoring Workflow
 
@@ -379,21 +396,21 @@ class Task extends Model
     }
 }
 
-// ✅ Prefer: Logic in Actions
-final readonly class CompleteTask
+// ✅ Prefer: Logic in Actions (compose other Actions via constructor injection)
+final readonly class CompleteTaskAction
 {
     public function __construct(
-        private TaskNotificationService $notifications,
-        private ProjectStatusService $projectStatus,
+        private SendTaskCompletionEmailAction $sendCompletionEmail,
+        private RefreshProjectStatusAction $refreshProjectStatus,
     ) {}
 
-    public function handle(Task $task): Task
+    public function __invoke(Task $task): Task
     {
         $task->update(['completed_at' => now()]);
-        
-        $this->notifications->sendCompletionEmail($task);
-        $this->projectStatus->updateIfNeeded($task->project);
-        
+
+        ($this->sendCompletionEmail)($task);
+        ($this->refreshProjectStatus)($task->project);
+
         return $task->fresh();
     }
 }
@@ -419,18 +436,14 @@ class TaskController
     }
 }
 
-// ✅ Prefer: Thin controller with dedicated classes
-final readonly class StoreController
+// ✅ Prefer: Thin controller with dedicated classes (Action method-injected)
+final class StoreTaskController
 {
-    public function __construct(
-        private CreateTask $createTask,
-    ) {}
-
-    public function __invoke(StoreTaskRequest $request): JsonResponse
+    public function __invoke(StoreTaskRequest $request, CreateTaskAction $action): JsonDataResponse
     {
-        $task = $this->createTask->handle($request->payload());
-        
-        return new JsonDataResponse(data: $task, status: 201);
+        $task = $action($request->payload());
+
+        return new JsonDataResponse($task, status: 201);
     }
 }
 ```
