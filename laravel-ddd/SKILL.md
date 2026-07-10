@@ -269,6 +269,7 @@ src/Support/Twilio/
 | Response | `{Shape}Response` | `JsonDataResponse` |
 | Enum | `{Concept}{Suffix}` | `TaskStatus`, `Priority` |
 | Exception | `{Problem}Exception` | `InvalidStateTransition` |
+| Vendor adapter | `{Vendor}{Contract}` | `StripePaymentGateway` |
 
 ## Example domain layout
 
