@@ -24,6 +24,8 @@ src/Domain/<DomainName>/
 ├── Events/           (domain events, optional)
 └── Exceptions/       (domain exceptions, optional)
 
+src/Support/<VendorName>/   (third-party SDK adapters, one folder per vendor)
+
 app/Http/
 ├── Controllers/<Domain>/V1/    (invokable, versioned)
 ├── Requests/<Domain>/V1/       (validation + payload())
