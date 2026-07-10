@@ -118,9 +118,8 @@ No rules are enforced, but follow these for consistency (directories are relativ
 | Table filters | `Tables/Filters` | filter + `Filter` — `CustomerCountryFilter`, `CustomerStatusFilter` |
 | Actions | `Actions` | action + `Action` / `BulkAction` — `EmailCustomerAction`, `UpdateCustomerCountryBulkAction` |
 
-## Managing relationships: default to relation pages with sub-navigation
-
-**Always default to a relation page (`ManageRelatedRecords`) registered in the resource's sub-navigation**, rather than a relation manager embedded beneath the owner's Edit/View form. A relation page keeps managing a relationship separate from editing or viewing the owner record, and lets users switch between the View/Edit page and each relation page via sub-navigation. Reach for an embedded relation manager only when you specifically want the relationship managed inline under the owner's form.
+## Default relationships to relation pages with sub-navigation
+**Always default to a relation page (`ManageRelatedRecords`) registered in the resource's sub-navigation**, rather than a relation manager embedded beneath the owner's Edit/View form. A relation page keeps managing a relationship separate from editing the owner, and lets users switch between the View/Edit page and each relation page via sub-navigation. Reach for an embedded relation manager only when the relationship must be managed inline under the owner's form.
 
 Generate the page (no `make:filament-relation-manager` needed):
 
@@ -128,7 +127,7 @@ Generate the page (no `make:filament-relation-manager` needed):
 php artisan make:filament-page ManageCustomerAddresses --resource=CustomerResource --type=ManageRelatedRecords
 ```
 
-Register it in `getPages()` with a record-scoped route:
+Register it in `getPages()` with a record-scoped route, then add it to sub-navigation:
 
 ```php
 public static function getPages(): array
@@ -142,8 +141,6 @@ public static function getPages(): array
     ];
 }
 ```
-
-Add it to the resource sub-navigation:
 
 ```php
 use App\Filament\Resources\Customers\Pages;
