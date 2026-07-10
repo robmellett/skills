@@ -10,13 +10,13 @@ Inspired by Spatie's _Laravel Beyond CRUD_ but deliberately simplified: no `lara
 
 ### 2. Stateless by design
 - No hidden dependencies in models or actions.
-- Explicit data flow through Payloads (DTOs).
+- Explicit data flow through DTOs.
 - Query building over implicit scopes.
 - Strict mode enabled to catch N+1 issues early.
 
 ### 3. Boundary-first
 - Clear separation between HTTP, business logic, and data layers.
-- Form Requests handle validation and construct Payloads.
+- Form Requests handle validation and construct DTOs.
 - DTOs carry data between layers
 - Actions contain business logic.
 - Models are data access only.
@@ -45,7 +45,7 @@ The **domain (business) layer** lives in `src/Domain/` under the `Domain\` names
 ```
 src/Domain/<DomainName>/
 ├── Actions/             # business operations (invokable)
-├── Payloads/            # typed DTOs (consumed by HTTP, Jobs, CLI)
+├── DTOs/            # typed DTOs (consumed by HTTP, Jobs, CLI)
 ├── Models/              # Eloquent — data access only
 ├── Enums/               # status, type, role values
 ├── Events/              # domain events (optional)
@@ -57,7 +57,7 @@ src/Domain/<DomainName>/
 ```
 app/Http/
 ├── Controllers/<Domain>/V1/   # invokable, versioned
-├── Requests/<Domain>/V1/      # validation + payload()
+├── Requests/<Domain>/V1/      # validation + dto()
 ├── Responses/                 # shared Responsable classes
 │   ├── JsonDataResponse.php
 │   └── JsonErrorResponse.php
@@ -90,8 +90,8 @@ src/Domain/Task/
 │   ├── CreateTaskAction.php
 │   ├── CompleteTaskAction.php
 │   └── RecordTaskCreatedAction.php
-├── Payloads/
-│   └── StoreTaskPayload.php
+├── DTOs/
+│   └── StoreTaskDTO.php
 ├── Models/
 │   └── Task.php
 ├── Enums/
@@ -114,7 +114,7 @@ app/Http/
 
 Namespaces:
 - `Domain\Task\Actions\CreateTaskAction`
-- `Domain\Task\Payloads\StoreTaskPayload`
+- `Domain\Task\DTOs\StoreTaskDTO`
 - `App\Http\Controllers\Task\V1\StoreTaskController`
 
 ## Component Patterns
@@ -131,16 +131,16 @@ Namespaces:
 - Backed enums model status/type/role values.
 - Encode allowed transitions with a `canTransitionTo(self $next): bool` method using `match`.
 
-### Payloads (DTOs)
-- Live in `Domain\<Domain>\Payloads` (domain-level so HTTP, Jobs, and CLI can all consume them).
+### DTOs
+- Live in `Domain\<Domain>\DTOs` (domain-level so HTTP, Jobs, and CLI can all consume them).
 - `final readonly class` with promoted public properties.
 - `toArray()` for persistence; no business logic.
-- **All communication between layers happens through Payloads. Never pass `array $data` across a boundary.**
+- **All communication between layers happens through DTOs. Never pass `array $data` across a boundary.**
 
 ### Form Requests
 - Live in `App\Http\Requests\<Domain>\V1`.
 - Handle validation rules.
-- Expose a `payload()` method that builds the domain Payload from `validated()` data.
+- Expose a `dto()` method that builds the domain DTO from `validated()` data.
 - Validate enums with `new Enum(SomeEnum::class)`.
 
 ### Actions
@@ -195,9 +195,10 @@ Model state with backed enums that own their transition rules, and guard the tra
 - Avoid foreign keys across important boundaries (e.g. billing → CRM) — bridge with IDs and explicit lookups.
 
 ## Authentication
-- JWT tokens via the PHP Open Source Saver package.
-- Stateless authentication; token in `Authorization: Bearer {token}`.
-- Refresh token flow for long-lived sessions.
+- Laravel Sanctum for API tokens — never JWT.
+- On Laravel 11+, scaffold with `php artisan install:api` (installs Sanctum and creates `routes/api.php`).
+- Add the `HasApiTokens` trait to the authenticatable model; issue tokens with `$user->createToken('api')->plainTextToken`.
+- Stateless; clients send `Authorization: Bearer {token}`. Protect routes with `auth:sanctum`.
 
 ## Common Workflows
 
@@ -236,7 +237,7 @@ $tasks = QueryBuilder::for(Task::class)
 - ❌ Business logic in models
 - ❌ Business logic in controllers, or a controller that both reads and writes
 - ❌ Multiple operations per controller
-- ❌ Passing `array $data` across a boundary instead of a Payload
+- ❌ Passing `array $data` across a boundary instead of a DTO
 - ❌ Direct request access in Actions
 - ❌ `use Domain\Other\Models\...` — cross-domain access must go through Actions
 - ❌ Foreign keys across important domain boundaries
@@ -251,8 +252,8 @@ $tasks = QueryBuilder::for(Task::class)
 
 - Every business operation lives in an Action.
 - Controllers wire only Request → Action → Response.
-- No `array $data` crossing boundaries — Payloads everywhere.
-- Form Requests carry validation **and** the `payload()` method.
+- No `array $data` crossing boundaries — DTOs everywhere.
+- Form Requests carry validation **and** the `dto()` method.
 - Models contain no business logic.
 - `declare(strict_types=1)` on every file.
 - Every class is `final` (and `readonly` where applicable).

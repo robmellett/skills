@@ -36,7 +36,7 @@ The **domain (business) layer** lives in `src/Domain/` under the `Domain\` names
 ```
 src/Domain/<DomainName>/
 ├── Actions/             ← business operations (invokable)
-├── Payloads/            ← typed DTOs (consumed by HTTP, Jobs, CLI)
+├── DTOs/                ← typed data transfer objects (consumed by HTTP, Jobs, CLI)
 ├── Models/              ← Eloquent — data access only
 ├── Enums/               ← status, type, role values
 ├── Events/              ← domain events (optional)
@@ -48,7 +48,7 @@ src/Domain/<DomainName>/
 ```
 app/Http/
 ├── Controllers/<Domain>/V1/  ← invokable, versioned
-├── Requests/<Domain>/V1/     ← validation + payload()
+├── Requests/<Domain>/V1/     ← validation + dto()
 ├── Responses/                ← shared Responsable classes
 └── Middleware/
     └── HttpSunset.php
@@ -83,8 +83,8 @@ src/Domain/Task/
 │   ├── CreateTaskAction.php
 │   ├── CompleteTaskAction.php
 │   └── RecordTaskCreatedAction.php
-├── Payloads/
-│   └── StoreTaskPayload.php
+├── DTOs/
+│   └── StoreTaskDTO.php
 ├── Models/
 │   └── Task.php
 ├── Enums/
@@ -107,7 +107,7 @@ app/Http/
 
 Resulting namespaces:
 - `Domain\Task\Actions\CreateTaskAction`
-- `Domain\Task\Payloads\StoreTaskPayload`
+- `Domain\Task\DTOs\StoreTaskDTO`
 - `App\Http\Controllers\Task\V1\StoreTaskController`
 
 ## Architectural Rules
@@ -137,16 +137,16 @@ final class StoreTaskController
 {
     public function __invoke(StoreTaskRequest $request, CreateTaskAction $action): JsonDataResponse
     {
-        $task = $action($request->payload());
+        $task = $action($request->dto());
 
         return new JsonDataResponse($task, status: 201);
     }
 }
 ```
 
-### Rule 3 - Form Requests carry the payload
+### Rule 3 - Form Requests carry the DTO
 
-Validation **and** DTO construction happen in the `FormRequest`. The `payload()` method returns a typed Payload:
+Validation **and** DTO construction happen in the `FormRequest`. The `dto()` method returns a typed DTO:
 
 ```php
 final class StoreTaskRequest extends FormRequest
@@ -160,9 +160,9 @@ final class StoreTaskRequest extends FormRequest
         ];
     }
 
-    public function payload(): StoreTaskPayload
+    public function dto(): StoreTaskDTO
     {
-        return new StoreTaskPayload(
+        return new StoreTaskDTO(
             title: $this->validated('title'),
             dueAt: $this->date('due_at')?->toImmutable(),
             priority: Priority::from($this->validated('priority')),
@@ -171,12 +171,12 @@ final class StoreTaskRequest extends FormRequest
 }
 ```
 
-### Rule 4 - Payloads are the boundary DTOs
+### Rule 4 - DTOs are the boundary objects
 
-Plain `final readonly class` with promoted public properties — no external DTO libraries. Payloads live in the **domain** so HTTP, Jobs, and CLI can all consume them.
+Plain `final readonly class` with promoted public properties — no external DTO libraries. DTOs live in the **domain** so HTTP, Jobs, and CLI can all consume them.
 
 ```php
-final readonly class StoreTaskPayload
+final readonly class StoreTaskDTO
 {
     public function __construct(
         public string $title,
@@ -196,7 +196,7 @@ final readonly class StoreTaskPayload
 }
 ```
 
-> **All communication between layers happens through Payloads. Never pass `array $data` across a boundary.**
+> **All communication between layers happens through DTOs. Never pass `array $data` across a boundary.**
 
 ### Rule 5 - Actions are business operations
 
@@ -210,10 +210,10 @@ final readonly class CreateTaskAction
     ) {
     }
 
-    public function __invoke(StoreTaskPayload $payload): Task
+    public function __invoke(StoreTaskDTO $dto): Task
     {
-        return DB::transaction(function () use ($payload) {
-            $task = Task::create($payload->toArray());
+        return DB::transaction(function () use ($dto) {
+            $task = Task::create($dto->toArray());
 
             ($this->recordAuditTrail)($task);
 
@@ -365,7 +365,7 @@ These are mandatory, not optional:
 | Action | `{Verb}{Domain}Action` | `CreateTaskAction` |
 | Controller | `{Verb}{Domain}Controller` | `StoreTaskController` |
 | Request | `{Verb}{Domain}Request` | `StoreTaskRequest` |
-| Payload | `{Verb}{Domain}Payload` | `StoreTaskPayload` |
+| DTO | `{Verb}{Domain}DTO` | `StoreTaskDTO` |
 | Response | `{Shape}Response` | `JsonDataResponse`, `JsonErrorResponse` |
 | Enum | `{Concept}{Suffix}` | `TaskStatus`, `Priority` |
 | Exception | `{Problem}Exception` | `InvalidStateTransition` |
@@ -408,13 +408,13 @@ ULIDs, enum casts, relationships. Data access only. See Rule 6.
 
 Backed enums for status/type/role, with `canTransitionTo()` guards where state matters. See Rule 8.
 
-### Step 4 - Payload (`src/Domain/<Domain>/Payloads/`)
+### Step 4 - DTO (`src/Domain/<Domain>/DTOs/`)
 
 `final readonly` DTO with promoted properties and `toArray()`. See Rule 4.
 
 ### Step 5 - Form Request (`app/Http/Requests/<Domain>/V1/`)
 
-Validation rules + `payload()` returning the DTO. See Rule 3.
+Validation rules + `dto()` returning the DTO. See Rule 3.
 
 ### Step 6 - Action (`src/Domain/<Domain>/Actions/`)
 
@@ -569,14 +569,15 @@ composer require laravel/pint --dev
 
 - [ ] Every business operation lives in an Action.
 - [ ] Controllers wire only Request → Action → Response.
-- [ ] No `array $data` crossing boundaries — Payloads everywhere.
-- [ ] Form Requests carry validation **and** the `payload()` method.
+- [ ] No `array $data` crossing boundaries — DTOs everywhere.
+- [ ] Form Requests carry validation **and** the `dto()` method.
 - [ ] Models contain no business logic.
 - [ ] `declare(strict_types=1)` on every file.
 - [ ] Every class is `final` (and `readonly` where applicable).
 - [ ] No `app()` / `resolve()` / facade-root dependency fetching — DI everywhere.
 - [ ] State transitions gated by enum guards or explicit Actions.
 - [ ] Cross-domain access goes through Actions, never foreign models.
+- [ ] Authentication uses Sanctum (`auth:sanctum`), not JWT.
 - [ ] Tests target Actions and HTTP endpoints, not models.
 
 ## Code Review & Refactoring
@@ -587,7 +588,7 @@ When reviewing or refactoring, apply these in order:
 2. **Check type safety** - return types, parameter types, `declare(strict_types=1)`.
 3. **Simplify logic** - replace nested ternaries with `match`.
 4. **Extract complexity** - move complex conditions into named methods.
-5. **Verify boundaries** - Payloads across layers, Actions for cross-domain, no facade-root DI.
+5. **Verify boundaries** - DTOs across layers, Actions for cross-domain, no facade-root DI.
 6. **Improve naming** - business-first, matching the naming table.
 
 ### Match over nested ternaries
@@ -618,6 +619,6 @@ $status = match (true) {
 Template files in `assets/templates/` for quick scaffolding:
 - Controller.php
 - FormRequest.php
-- Payload.php
+- DTO.php
 - Action.php
 - Model.php

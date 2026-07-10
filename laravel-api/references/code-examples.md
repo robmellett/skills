@@ -88,19 +88,19 @@ final class Task extends Model
 }
 ```
 
-## Payload / DTO (`src/Domain/Task/Payloads/`)
+## DTO (`src/Domain/Task/DTOs/`)
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace Domain\Task\Payloads;
+namespace Domain\Task\DTOs;
 
 use Carbon\CarbonImmutable;
 use Domain\Task\Enums\Priority;
 
-final readonly class StoreTaskPayload
+final readonly class StoreTaskDTO
 {
     public function __construct(
         public string $title,
@@ -124,7 +124,7 @@ final readonly class StoreTaskPayload
 }
 ```
 
-## Form Request with payload() (`app/Http/Requests/Task/V1/`)
+## Form Request with dto() (`app/Http/Requests/Task/V1/`)
 
 ```php
 <?php
@@ -134,7 +134,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Task\V1;
 
 use Domain\Task\Enums\Priority;
-use Domain\Task\Payloads\StoreTaskPayload;
+use Domain\Task\DTOs\StoreTaskDTO;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Enum;
 
@@ -156,9 +156,9 @@ final class StoreTaskRequest extends FormRequest
         ];
     }
 
-    public function payload(): StoreTaskPayload
+    public function dto(): StoreTaskDTO
     {
-        return new StoreTaskPayload(
+        return new StoreTaskDTO(
             title: $this->validated('title'),
             description: $this->validated('description'),
             dueAt: $this->date('due_at')?->toImmutable(),
@@ -179,7 +179,7 @@ declare(strict_types=1);
 namespace Domain\Task\Actions;
 
 use Domain\Task\Models\Task;
-use Domain\Task\Payloads\StoreTaskPayload;
+use Domain\Task\DTOs\StoreTaskDTO;
 use Illuminate\Support\Facades\DB;
 
 final readonly class CreateTaskAction
@@ -189,10 +189,10 @@ final readonly class CreateTaskAction
     ) {
     }
 
-    public function __invoke(StoreTaskPayload $payload): Task
+    public function __invoke(StoreTaskDTO $dto): Task
     {
-        return DB::transaction(function () use ($payload) {
-            $task = Task::create($payload->toArray());
+        return DB::transaction(function () use ($dto) {
+            $task = Task::create($dto->toArray());
 
             ($this->recordAuditTrail)($task);
 
@@ -268,7 +268,7 @@ final class StoreTaskController
 {
     public function __invoke(StoreTaskRequest $request, CreateTaskAction $action): JsonDataResponse
     {
-        $task = $action($request->payload());
+        $task = $action($request->dto());
 
         return new JsonDataResponse($task, status: 201);
     }
@@ -355,7 +355,7 @@ final class UpdateTaskController
 {
     public function __invoke(UpdateTaskRequest $request, Task $task, UpdateTaskAction $action): JsonDataResponse
     {
-        $updated = $action($task, $request->payload());
+        $updated = $action($task, $request->dto());
 
         return new JsonDataResponse($updated);
     }
@@ -370,13 +370,13 @@ declare(strict_types=1);
 namespace Domain\Task\Actions;
 
 use Domain\Task\Models\Task;
-use Domain\Task\Payloads\UpdateTaskPayload;
+use Domain\Task\DTOs\UpdateTaskDTO;
 
 final readonly class UpdateTaskAction
 {
-    public function __invoke(Task $task, UpdateTaskPayload $payload): Task
+    public function __invoke(Task $task, UpdateTaskDTO $dto): Task
     {
-        $task->update($payload->toArray());
+        $task->update($dto->toArray());
 
         return $task->fresh();
     }
@@ -518,7 +518,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Task\V1;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth:api'])->group(function () {
+Route::middleware(['auth:sanctum'])->group(function () {
     // Reads — direct model queries
     Route::get('/tasks', V1\IndexTaskController::class);
     Route::get('/tasks/{task}', V1\ShowTaskController::class);

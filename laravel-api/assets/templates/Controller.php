@@ -12,7 +12,7 @@ final class {Verb}{Domain}Controller
 {
     public function __invoke({Request} $request, {Verb}{Domain}Action $action): JsonDataResponse
     {
-        $result = $action($request->payload());
+        $result = $action($request->dto());
 
         return new JsonDataResponse($result, status: 201);
     }

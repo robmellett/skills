@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Domain\{Domain}\Payloads;
+namespace Domain\{Domain}\DTOs;
 
-final readonly class {Payload}
+final readonly class {DTO}
 {
     public function __construct(
         // Define promoted public properties

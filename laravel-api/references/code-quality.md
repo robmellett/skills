@@ -276,7 +276,7 @@ final class StoreTaskController
 - Use PascalCase
 - Controllers: `{Verb}{Domain}Controller` (e.g., `StoreTaskController`)
 - Actions: `{Verb}{Domain}Action` (e.g., `CreateTaskAction`)
-- Payloads: `{Verb}{Domain}Payload` (e.g., `StoreTaskPayload`)
+- DTOs: `{Verb}{Domain}DTO` (e.g., `StoreTaskDTO`)
 - Enums: `{Concept}{Suffix}` (e.g., `TaskStatus`, `Priority`)
 - Exceptions: `{Problem}Exception` (e.g., `InvalidStateTransition`)
 
@@ -304,14 +304,14 @@ final class TaskService
     }
 
     // 2. Public methods
-    public function createTask(StoreTaskPayload $payload): Task
+    public function createTask(StoreTaskDTO $dto): Task
     {
-        return $this->repository->create($payload->toArray());
+        return $this->repository->create($dto->toArray());
     }
 
-    public function updateTask(Task $task, UpdateTaskPayload $payload): Task
+    public function updateTask(Task $task, UpdateTaskDTO $dto): Task
     {
-        return $this->repository->update($task, $payload->toArray());
+        return $this->repository->update($task, $dto->toArray());
     }
 
     // 3. Protected methods
@@ -348,7 +348,7 @@ When reviewing Laravel API code, check for:
 - [ ] Domain classes live in `Domain\<Domain>\...`; HTTP classes in `App\Http\...`
 - [ ] Models use HasUlids trait and cast statuses/types to backed enums
 - [ ] Controllers are invokable, single responsibility, and either read or write (never both)
-- [ ] Form Requests have payload() method returning a domain Payload
+- [ ] Form Requests have dto() method returning a domain DTO
 - [ ] Actions are invokable (`__invoke()`), named `{Verb}{Domain}Action`
 - [ ] Dependencies injected — no `app()` / `resolve()` / facade-root fetching
 - [ ] Cross-domain access goes through Actions, never foreign models
@@ -443,7 +443,7 @@ final class StoreTaskController
 {
     public function __invoke(StoreTaskRequest $request, CreateTaskAction $action): JsonDataResponse
     {
-        $task = $action($request->payload());
+        $task = $action($request->dto());
 
         return new JsonDataResponse($task, status: 201);
     }
