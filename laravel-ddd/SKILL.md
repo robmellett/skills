@@ -35,7 +35,9 @@ app/Http/
 "autoload": {
     "psr-4": {
         "App\\": "app/",
-        "Domain\\": "src/Domain/"
+        "Domain\\": "src/Domain/",
+        "Shared\\": "src/Shared/",
+        "Support\\": "src/Support/"
     }
 }
 ```
