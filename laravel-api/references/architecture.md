@@ -23,7 +23,7 @@ Inspired by Spatie's _Laravel Beyond CRUD_ but deliberately simplified: no `lara
 - HTTP may depend on Domain; Domain never depends on HTTP.
 
 ### 4. One operation, one class
-- Invokable controllers (one `__invoke()`), invokable Actions (one user story).
+- Invokable controllers (one `__invoke()`); Actions expose `make()` + `execute()` (one user story).
 
 ### 5. Version discipline
 - Versioning through namespacing (`V1`, `V2`).
@@ -34,7 +34,7 @@ Inspired by Spatie's _Laravel Beyond CRUD_ but deliberately simplified: no `lara
 - `declare(strict_types=1)` on every file.
 - `final readonly class` by default; return/parameter types everywhere.
 - `match` over nested ternaries; PSR-12 formatting.
-- No `app()` / `resolve()` / facade-root dependency fetching — dependency injection everywhere.
+- No `app()` / `resolve()` / facade-root dependency fetching — DI everywhere (except the Action `make()` factory).
 
 ## Two-Layer Structure
 
@@ -145,8 +145,8 @@ Namespaces:
 
 ### Actions
 - Live in `Domain\<Domain>\Actions`.
-- Named `{Verb}{Domain}Action`; single `__invoke()` (or `handle()` for queue-job parity).
-- Compose other Actions via constructor injection — never `app()`/`resolve()` in the body.
+- Named `{Verb}{Domain}Action`; expose a static `make()` factory and an `execute()` method.
+- Compose other Actions via constructor injection — never `app()`/`resolve()` in the body (except the `make()` factory).
 - Wrap multi-write operations in `DB::transaction()`.
 - Guard preconditions early; throw domain exceptions.
 - **One action = one user story.** If the name doesn't describe something a stakeholder might ask for, it's the wrong shape.
@@ -159,7 +159,7 @@ Namespaces:
 - Live in `App\Http\Controllers\<Domain>\V1`.
 - Invokable, one operation per class, named `{Verb}{Domain}Controller`.
 - **Controllers have one job: wire the request to the action and shape the response. No business logic, no model writes.**
-- Method-inject the Action into `__invoke()` and call it directly.
+- Call the Action via `Action::make()->execute()`.
 
 ### Response classes
 - Implement `Responsable`; live in `App\Http\Responses`.

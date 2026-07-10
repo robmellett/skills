@@ -349,7 +349,7 @@ When reviewing Laravel API code, check for:
 - [ ] Models use HasUlids trait and cast statuses/types to backed enums
 - [ ] Controllers are invokable, single responsibility, and either read or write (never both)
 - [ ] Form Requests have dto() method returning a domain DTO
-- [ ] Actions are invokable (`__invoke()`), named `{Verb}{Domain}Action`
+- [ ] Actions expose static `make()` + `execute()`, named `{Verb}{Domain}Action`
 - [ ] Dependencies injected — no `app()` / `resolve()` / facade-root fetching
 - [ ] Cross-domain access goes through Actions, never foreign models
 - [ ] Response classes implement Responsable
@@ -400,18 +400,23 @@ class Task extends Model
 // ✅ Prefer: Logic in Actions (compose other Actions via constructor injection)
 final readonly class CompleteTaskAction
 {
+    public static function make(): static
+    {
+        return app(static::class);
+    }
+
     public function __construct(
         private SendTaskCompletionEmailAction $sendCompletionEmail,
         private RefreshProjectStatusAction $refreshProjectStatus,
     ) {
     }
 
-    public function __invoke(Task $task): Task
+    public function execute(Task $task): Task
     {
         $task->update(['completed_at' => now()]);
 
-        ($this->sendCompletionEmail)($task);
-        ($this->refreshProjectStatus)($task->project);
+        $this->sendCompletionEmail->execute($task);
+        $this->refreshProjectStatus->execute($task->project);
 
         return $task->fresh();
     }
@@ -438,12 +443,12 @@ class TaskController
     }
 }
 
-// ✅ Prefer: Thin controller with dedicated classes (Action method-injected)
+// ✅ Prefer: Thin controller with dedicated classes (Action via make()->execute())
 final class StoreTaskController
 {
-    public function __invoke(StoreTaskRequest $request, CreateTaskAction $action): JsonDataResponse
+    public function __invoke(StoreTaskRequest $request): JsonDataResponse
     {
-        $task = $action($request->dto());
+        $task = CreateTaskAction::make()->execute($request->dto());
 
         return new JsonDataResponse($task, status: 201);
     }

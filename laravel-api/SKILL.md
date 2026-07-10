@@ -24,7 +24,7 @@ When a user requests a Laravel API, follow this workflow:
 1. **Business-first** - The folder tree mirrors the domain language, not framework defaults.
 2. **Stateless by design** - No hidden dependencies; explicit data flow through DTOs.
 3. **Boundary-first** - HTTP, business logic, and data layers are cleanly separated.
-4. **One operation, one class** - Invokable controllers, invokable Actions, one user story each.
+4. **One operation, one class** - Invokable controllers, single-purpose Actions, one user story each.
 5. **Version discipline** - Namespace-based versioning (`V1`, `V2`), HTTP Sunset headers for deprecation.
 
 ## Directory Structure
@@ -130,14 +130,14 @@ One controller per operation, one `__invoke()` method. Versioned under `V1/`, `V
 
 > **Controllers have one job — wire the request to the action and shape the response. No business logic, no model writes.**
 
-The Action is **method-injected** into `__invoke()` and called directly:
+The controller resolves the Action via its static `make()` factory and calls `execute()`:
 
 ```php
 final class StoreTaskController
 {
-    public function __invoke(StoreTaskRequest $request, CreateTaskAction $action): JsonDataResponse
+    public function __invoke(StoreTaskRequest $request): JsonDataResponse
     {
-        $task = $action($request->dto());
+        $task = CreateTaskAction::make()->execute($request->dto());
 
         return new JsonDataResponse($task, status: 201);
     }
@@ -200,22 +200,27 @@ final readonly class StoreTaskDTO
 
 ### Rule 5 - Actions are business operations
 
-One operation per class, invokable, composed via constructor injection. Wrap multi-write operations in `DB::transaction()`.
+One operation per class, composed via constructor injection. Wrap multi-write operations in `DB::transaction()`.
 
 ```php
 final readonly class CreateTaskAction
 {
+    public static function make(): static
+    {
+        return app(static::class);
+    }
+
     public function __construct(
         private RecordTaskCreatedAction $recordAuditTrail,
     ) {
     }
 
-    public function __invoke(StoreTaskDTO $dto): Task
+    public function execute(StoreTaskDTO $dto): Task
     {
         return DB::transaction(function () use ($dto) {
             $task = Task::create($dto->toArray());
 
-            ($this->recordAuditTrail)($task);
+            $this->recordAuditTrail->execute($task);
 
             return $task;
         });
@@ -225,8 +230,8 @@ final readonly class CreateTaskAction
 
 Conventions:
 - Naming: `{Verb}{Domain}Action` (e.g. `CreateTaskAction`).
-- Single `__invoke()` - use `handle()` only for queue-job parity.
-- Compose other Actions via constructor injection - never `app()` or `resolve()` in the body.
+- Expose a static `make()` factory (`return app(static::class);`) and an `execute()` method. Invoke as `SomeAction::make()->execute(...)`.
+- Compose other Actions via constructor injection - never `app()` or `resolve()` in the body (the `make()` factory is the one exception).
 - Guard preconditions early; throw domain exceptions.
 
 > **One action = one user story. If the name doesn't describe a thing a stakeholder might ask for, it's the wrong shape.**
@@ -312,7 +317,12 @@ Guard the transition inside the Action:
 ```php
 final readonly class CompleteTaskAction
 {
-    public function __invoke(Task $task): Task
+    public static function make(): static
+    {
+        return app(static::class);
+    }
+
+    public function execute(Task $task): Task
     {
         throw_unless(
             $task->status->canTransitionTo(TaskStatus::Completed),
@@ -348,7 +358,7 @@ These are mandatory, not optional:
 - Return types and parameter types on **every** method.
 - PSR-12 formatting.
 - `match` instead of nested ternaries or `if`/`elseif` chains.
-- **Never** call `app()`, `resolve()`, `Container::make()`, or facade roots to fetch dependencies inside classes — always use dependency injection. (`DB::transaction()` as a transaction boundary is fine.)
+- **Never** call `app()`, `resolve()`, `Container::make()`, or facade roots to fetch dependencies inside classes — always use dependency injection. (Exceptions: the Action's static `make()` factory, and `DB::transaction()` as a transaction boundary.)
 - Models use ULIDs.
 
 ## Cross-Domain Boundaries
@@ -422,7 +432,7 @@ Invokable, `{Verb}{Domain}Action`, `DB::transaction()` for multi-write. See Rule
 
 ### Step 7 - Controller (`app/Http/Controllers/<Domain>/V1/`)
 
-Invokable, method-injects the Action, returns a `Responsable`. See Rule 2.
+Invokable; calls `Action::make()->execute()`, returns a `Responsable`. See Rule 2.
 
 ## Response Format
 
@@ -558,7 +568,7 @@ composer require laravel/pint --dev
 - Accessing request data directly in Actions.
 - `use Domain\Other\Models\...` - cross-domain access must go through Actions.
 - Foreign keys across important domain boundaries.
-- Fetching dependencies via `app()` / `resolve()` / facade roots instead of DI.
+- Fetching dependencies via `app()` / `resolve()` / facade roots outside the Action `make()` factory.
 - String statuses via `Rule::in([...])` instead of backed enums with guards.
 - Service classes when Action-to-Action composition would do.
 - JWT for authentication — use Laravel Sanctum.

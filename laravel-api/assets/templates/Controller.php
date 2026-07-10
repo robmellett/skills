@@ -10,9 +10,9 @@ use Domain\{Domain}\Actions\{Verb}{Domain}Action;
 
 final class {Verb}{Domain}Controller
 {
-    public function __invoke({Request} $request, {Verb}{Domain}Action $action): JsonDataResponse
+    public function __invoke({Request} $request): JsonDataResponse
     {
-        $result = $action($request->dto());
+        $result = {Verb}{Domain}Action::make()->execute($request->dto());
 
         return new JsonDataResponse($result, status: 201);
     }

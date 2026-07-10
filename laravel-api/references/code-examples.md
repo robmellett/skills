@@ -178,23 +178,28 @@ declare(strict_types=1);
 
 namespace Domain\Task\Actions;
 
-use Domain\Task\Models\Task;
 use Domain\Task\DTOs\StoreTaskDTO;
+use Domain\Task\Models\Task;
 use Illuminate\Support\Facades\DB;
 
 final readonly class CreateTaskAction
 {
+    public static function make(): static
+    {
+        return app(static::class);
+    }
+
     public function __construct(
         private RecordTaskCreatedAction $recordAuditTrail,
     ) {
     }
 
-    public function __invoke(StoreTaskDTO $dto): Task
+    public function execute(StoreTaskDTO $dto): Task
     {
         return DB::transaction(function () use ($dto) {
             $task = Task::create($dto->toArray());
 
-            ($this->recordAuditTrail)($task);
+            $this->recordAuditTrail->execute($task);
 
             return $task;
         });
@@ -217,7 +222,12 @@ use Domain\Task\Models\Task;
 
 final readonly class CompleteTaskAction
 {
-    public function __invoke(Task $task): Task
+    public static function make(): static
+    {
+        return app(static::class);
+    }
+
+    public function execute(Task $task): Task
     {
         throw_unless(
             $task->status->canTransitionTo(TaskStatus::Completed),
@@ -249,9 +259,9 @@ final class InvalidStateTransition extends RuntimeException
 }
 ```
 
-## Invokable write controller (`app/Http/Controllers/Task/V1/`)
+## Write controller (`app/Http/Controllers/Task/V1/`)
 
-The Action is method-injected. The controller only wires Request → Action → Response.
+The controller resolves the Action via its static `make()` factory and runs it with `execute()` — wiring Request → Action → Response.
 
 ```php
 <?php
@@ -266,9 +276,9 @@ use Domain\Task\Actions\CreateTaskAction;
 
 final class StoreTaskController
 {
-    public function __invoke(StoreTaskRequest $request, CreateTaskAction $action): JsonDataResponse
+    public function __invoke(StoreTaskRequest $request): JsonDataResponse
     {
-        $task = $action($request->dto());
+        $task = CreateTaskAction::make()->execute($request->dto());
 
         return new JsonDataResponse($task, status: 201);
     }
@@ -353,9 +363,9 @@ use Domain\Task\Models\Task;
 
 final class UpdateTaskController
 {
-    public function __invoke(UpdateTaskRequest $request, Task $task, UpdateTaskAction $action): JsonDataResponse
+    public function __invoke(UpdateTaskRequest $request, Task $task): JsonDataResponse
     {
-        $updated = $action($task, $request->dto());
+        $updated = UpdateTaskAction::make()->execute($task, $request->dto());
 
         return new JsonDataResponse($updated);
     }
@@ -369,12 +379,17 @@ declare(strict_types=1);
 
 namespace Domain\Task\Actions;
 
-use Domain\Task\Models\Task;
 use Domain\Task\DTOs\UpdateTaskDTO;
+use Domain\Task\Models\Task;
 
 final readonly class UpdateTaskAction
 {
-    public function __invoke(Task $task, UpdateTaskDTO $dto): Task
+    public static function make(): static
+    {
+        return app(static::class);
+    }
+
+    public function execute(Task $task, UpdateTaskDTO $dto): Task
     {
         $task->update($dto->toArray());
 
