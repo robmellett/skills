@@ -481,11 +481,17 @@ Configure in `pint.json`:
     "preset": "laravel",
     "rules": {
         "declare_strict_types": true,
-        "no_unused_imports": true,
-        "ordered_imports": true
+        "single_line_empty_body": false,
+        "multiline_promoted_properties": true
     }
 }
 ```
+
+Notable rules for this architecture:
+- `single_line_empty_body: false` keeps empty bodies expanded (`) {` then `}`) rather than collapsing to `) {}`.
+- `multiline_promoted_properties` puts each promoted constructor property on its own line.
+
+(`ordered_imports` and `no_unused_imports` are already part of the `laravel` preset, so they don't need to be listed.)
 
 ### PHPStan
 

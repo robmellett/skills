@@ -517,6 +517,30 @@ protected $middlewareAliases = [
 ];
 ```
 
+### Formatting — Laravel Pint
+
+Format all code with Laravel Pint using the project `pint.json`:
+
+```json
+{
+    "preset": "laravel",
+    "rules": {
+        "declare_strict_types": true,
+        "single_line_empty_body": false,
+        "multiline_promoted_properties": true
+    }
+}
+```
+
+- `declare_strict_types` — enforces `declare(strict_types=1)` on every file.
+- `single_line_empty_body: false` — keep empty bodies expanded (`) {` then `}`), not collapsed to `) {}`.
+- `multiline_promoted_properties` — one promoted constructor property per line.
+
+```bash
+composer require laravel/pint --dev
+./vendor/bin/pint
+```
+
 ## Anti-Patterns to Avoid
 
 - Auto-increment IDs instead of ULIDs.
