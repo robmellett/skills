@@ -1,6 +1,6 @@
 ---
 name: filament-best-practices
-description: Apply Filament v5 code-quality practices for keeping resource code small and readable. Use when creating, editing, reviewing, or refactoring Filament resources, schemas, forms, tables, infolists, or actions, or when a form(), table(), infolist(), or configure() method grows long; covers extracting UI definitions into dedicated schema/table classes and heavily-configured components (inputs, columns, filters, actions) into component classes.
+description: Apply Filament v5 code-quality and resource best practices. Use when creating, editing, reviewing, or refactoring Filament resources, schemas, forms, tables, infolists, actions, or relationships, or when a form(), table(), infolist(), or configure() method grows long; covers extracting UI definitions into dedicated schema/table classes, extracting heavily-configured components (inputs, columns, filters, actions) into component classes, and managing relationships via relation pages with resource sub-navigation.
 license: MIT
 metadata:
   author: Filament
@@ -16,9 +16,10 @@ Filament methods define both the UI and the functionality of the app in a single
 - Activate when creating, editing, reviewing, or refactoring Filament resources, pages, or relation managers.
 - Activate when a `form()`, `table()`, `infolist()`, or `configure()` method is long or a resource file is hard to read.
 - Activate when working on Filament schemas, forms, tables, infolists, columns, filters, or actions.
+- Activate when managing a resource's relationships — deciding between relation managers and relation pages, or wiring up sub-navigation.
 
 ## Scope
-- In scope: Filament v5 resources and their schema, table, infolist, column, filter, and action definitions.
+- In scope: Filament v5 resources and their schema, table, infolist, column, filter, and action definitions, plus how relationships are managed on a resource.
 - Out of scope: general Laravel/PHP style (use `spatie-laravel-php`), Livewire internals, custom Blade/CSS.
 
 ## Two levers
@@ -111,11 +112,55 @@ No rules are enforced, but follow these conventions for consistency (all directo
 | Table filters | `Tables/Filters` | filter + `Filter` — `CustomerCountryFilter`, `CustomerStatusFilter` |
 | Actions | `Actions` | action + `Action` / `BulkAction` — `EmailCustomerAction`, `UpdateCustomerCountryBulkAction` |
 
+## Managing relationships: default to relation pages with sub-navigation
+
+**Always default to a relation page (`ManageRelatedRecords`) registered in the resource's sub-navigation**, rather than a relation manager embedded beneath the owner's Edit/View form. A relation page keeps managing a relationship separate from editing or viewing the owner record, and lets users switch between the View/Edit page and each relation page via sub-navigation. Reach for an embedded relation manager only when you specifically want the relationship managed inline under the owner's form.
+
+Generate the page (no `make:filament-relation-manager` needed):
+
+```bash
+php artisan make:filament-page ManageCustomerAddresses --resource=CustomerResource --type=ManageRelatedRecords
+```
+
+Register it in `getPages()` with a record-scoped route:
+
+```php
+public static function getPages(): array
+{
+    return [
+        'index' => Pages\ListCustomers::route('/'),
+        'create' => Pages\CreateCustomer::route('/create'),
+        'view' => Pages\ViewCustomer::route('/{record}'),
+        'edit' => Pages\EditCustomer::route('/{record}/edit'),
+        'addresses' => Pages\ManageCustomerAddresses::route('/{record}/addresses'),
+    ];
+}
+```
+
+Add it to the resource sub-navigation:
+
+```php
+use App\Filament\Resources\Customers\Pages;
+use Filament\Resources\Pages\Page;
+
+public static function getRecordSubNavigation(Page $page): array
+{
+    return $page->generateNavigationItems([
+        // ...
+        Pages\ManageCustomerAddresses::class,
+    ]);
+}
+```
+
+You do not need to generate a relation manager or register it in `getRelations()`. Customize the page with the same `table()` and `form()` you would use on a relation manager.
+
 ## Core Rules (Summary)
 - Extract long `form()`/`table()`/`infolist()` definitions into dedicated schema/table classes with a static `configure(Schema|Table): Schema|Table` method, and call them from the resource (`CustomerForm::configure($schema)`).
 - Extract heavily-configured components into component classes with a static `make()` factory that returns the configured component.
 - Don't give schema/table/component classes a parent class or interface — keep `configure()`/`make()` free to take custom parameters for reuse.
 - Place and name extracted classes per the conventions table above.
+- Default to relation pages (`ManageRelatedRecords`) with resource sub-navigation for managing relationships; use an embedded relation manager only when the relationship must be managed inline under the owner's form.
 
 ## References
 - `references/filament-code-quality-tips.md` — full verbatim Filament "Code quality tips" documentation with every code example.
+- `references/filament-relation-pages.md` — full verbatim "Relation pages" and sub-navigation sections of Filament's "Managing relationships" documentation.
