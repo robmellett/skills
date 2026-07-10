@@ -155,15 +155,41 @@ public static function getRecordSubNavigation(Page $page): array
 }
 ```
 
-You do not need to generate a relation manager or register it in `getRelations()`. Customize the page with the same `table()` and `form()` you would use on a relation manager.
+A relation page **replaces** its relation manager: don't also register it in `getRelations()`. Customize it with the same `table()` and `form()` you'd use on a relation manager.
+
+## Get the details right
+These are the specifics agents most often get wrong — copy them exactly:
+
+- **Namespaces are nested per resource.** Everything lives under `App\Filament\Resources\{PluralModel}\`: `…\Schemas`, `…\Schemas\Components`, `…\Tables\Columns`, `…\Tables\Filters`, `…\Actions`, `…\Pages`.
+- **Generators**: `make:filament-resource`, `make:filament-page <Name> --resource=<Resource> --type=ManageRelatedRecords`, `make:filament-relation-manager`, `make:filament-widget`.
+- **Method signatures return what they receive**: `form(Schema $schema): Schema`, `table(Table $table): Table`, `infolist(Schema $schema): Schema`; each `configure()` returns the same type it's given.
+- **Icons use the `Heroicon` enum**, not strings: `use Filament\Support\Icons\Heroicon;` then `->icon(Heroicon::Envelope)`.
+- **Schemas import from `Filament\Schemas\*`** (`Schema`, layout components) while fields import from `Filament\Forms\Components\*`.
+
+## Review checklist
+When reviewing Filament code, flag:
+
+- A `form()`/`table()`/`infolist()`/`configure()` method long enough to scroll → extract to a schema/table or component class.
+- A relationship managed inline under the owner's form when it warrants its own page → move to a relation page in sub-navigation.
+- A component (input, column, filter, action) duplicated across resources → promote to a shared component class.
+- A resource or destructive/state-changing action with no authorization → add a policy; scope queries when multi-tenant.
+- A state transition implemented as a plain edit → model it as a dedicated Action.
+- Icons, labels, or validation hard-coded inline where a component class would centralize them.
 
 ## Core Rules (Summary)
-- Extract long `form()`/`table()`/`infolist()` definitions into dedicated schema/table classes with a static `configure(Schema|Table): Schema|Table` method, and call them from the resource (`CustomerForm::configure($schema)`).
-- Extract heavily-configured components into component classes with a static `make()` factory that returns the configured component.
-- Don't give schema/table/component classes a parent class or interface — keep `configure()`/`make()` free to take custom parameters for reuse.
-- Place and name extracted classes per the conventions table above.
-- Default to relation pages (`ManageRelatedRecords`) with resource sub-navigation for managing relationships; use an embedded relation manager only when the relationship must be managed inline under the owner's form.
+- Decide the primitive before writing the schema; map state transitions to Actions.
+- Represent relationships per the decision table; **default to relation pages with sub-navigation**, and don't register a relation page in `getRelations()`.
+- Extract long `form()`/`table()`/`infolist()` definitions into schema/table classes with a static `configure(Schema|Table): Schema|Table`, called from the resource.
+- Extract heavily-configured or reused components into component classes with a static `make()` factory.
+- Give schema/table/component classes no parent class or interface, so `configure()`/`make()` stay free to take custom parameters.
+- Place and name extracted classes per the conventions table; get namespaces, generators, signatures, and the `Heroicon` enum exactly right.
+- Defer to any Boost-generated Filament guidelines already in the project.
 
 ## References
-- `references/filament-code-quality-tips.md` — full verbatim Filament "Code quality tips" documentation with every code example.
-- `references/filament-relation-pages.md` — full verbatim "Relation pages" and sub-navigation sections of Filament's "Managing relationships" documentation.
+- `references/filament-code-quality-tips.md` — verbatim "Code quality tips" (schema/table classes, component classes, full `EmailCustomerAction`).
+- `references/filament-managing-relationships.md` — verbatim "Choosing the right tool for the job", "Relation pages", and sub-navigation sections.
+- `references/filament-ai-assisted-development.md` — verbatim "AI-assisted development" page (Laravel Boost, Filament Blueprint, Security Audit); the inspiration for this skill's shape.
+
+## Ecosystem
+- **Laravel Boost** (`composer require laravel/boost --dev`, then `php artisan boost:install`) installs Filament guidelines for implementing agents plus live doc search. Suggest it when a Filament project has no agent guidelines yet.
+- **Filament Blueprint** (premium) produces detailed implementation *plans* for a planning agent to hand to an implementing agent, and ships a **Filament Security Audit** skill. See `references/filament-ai-assisted-development.md`.
