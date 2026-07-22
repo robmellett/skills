@@ -99,6 +99,86 @@ Bus::batch([
 ->dispatch();
 ```
 
+## Self-Append Batchable Jobs to Walk Large Datasets
+
+When a batch must process an unbounded table, don't queue one job per row up front (millions of jobs) or load every record into memory. Use a single `Batchable` job that processes one keyset page, then adds the *next* page back into the running batch. The batch drains itself one page at a time and finishes when a page comes back empty.
+
+Use keyset pagination (`forPageAfterId`), never `OFFSET` — offset degrades on deep pages and skips or repeats rows when records change mid-run.
+
+```php
+use Illuminate\Bus\Batchable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+
+class ProcessUsersBatch implements ShouldQueue
+{
+    use Batchable;
+
+    public function __construct(
+        public readonly int $lastId = 0,
+    ) {}
+
+    public function handle(): void
+    {
+        if ($this->batch()?->cancelled()) {
+            return;
+        }
+
+        $users = User::forPageAfterId(perPage: 100, lastId: $this->lastId)->get();
+
+        $users->each(function (User $user) {
+            // do something...
+        });
+
+        if ($users->isNotEmpty()) {
+            $this->batch()->add(new self($users->last()->id));
+        }
+    }
+}
+```
+
+Dispatch it as a batch so `then()` / `catch()` / `finally()` callbacks and progress tracking work:
+
+```php
+Bus::batch([new ProcessUsersBatch])
+    ->name('process-users')
+    ->then(fn (Batch $batch) => Log::info('All users processed'))
+    ->dispatch();
+```
+
+Check `$this->batch()?->cancelled()` at the top of `handle()` so a cancelled batch stops walking instead of re-appending forever.
+
+## Keep Long-Running Queries Out of Console Commands
+
+A console command that iterates a large table runs in one process — a deploy, timeout, or crash loses all progress, and nothing retries. Keep the command thin: it dispatches a batch and returns. Put the walking logic in a `Batchable` job (see above) so work runs on queue workers with retries, backoff, and failure handling.
+
+Incorrect (long-running work inside the command):
+```php
+class RecalculateScores extends Command
+{
+    public function handle(): void
+    {
+        User::where('active', true)->chunkById(200, function ($users) {
+            $users->each->recalculateScore(); // hours of work, one fragile process
+        });
+    }
+}
+```
+
+Correct (command dispatches a batch, workers do the work):
+```php
+class RecalculateScores extends Command
+{
+    public function handle(): void
+    {
+        Bus::batch([new RecalculateScoresBatch])
+            ->name('recalculate-scores')
+            ->dispatch();
+
+        $this->info('Dispatched score recalculation.');
+    }
+}
+```
+
 ## `retryUntil()` Needs `$tries = 0`
 
 When using time-based retry limits, set `$tries = 0` to avoid premature failure.

@@ -91,6 +91,8 @@ User::where('active', false)->chunkById(200, function ($users) {
 });
 ```
 
+`chunk()` / `chunkById()` are for work that fits in one synchronous process. When the dataset is large enough that the walk itself needs retries, backoff, and to survive a deploy, move it onto the queue with a self-appending `Batchable` job instead — see [`rules/queue-jobs.md`](queue-jobs.md).
+
 ## Add Database Indexes
 
 Index columns that appear in `WHERE`, `ORDER BY`, `JOIN`, and `GROUP BY` clauses.
