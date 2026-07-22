@@ -1,6 +1,6 @@
 ---
 name: laravel-ddd
-description: "Apply this skill when structuring a Laravel application around domain-driven design — organizing code into src/Domain/<Domain> with Actions, Payloads, Models, and Enums, wiring invokable versioned controllers, or deciding where business logic should live. Use when creating a new domain/module, adding a business operation, refactoring fat controllers or models, introducing DTOs/value objects, designing state machines with enums, or reviewing Laravel code for domain boundaries and layering. This is a fuller architectural methodology than laravel-best-practices' architecture rule — use this skill when the whole request/response flow needs to be structured, not just a single pattern fixed."
+description: "Apply this skill when structuring a Laravel application around domain-driven design — organizing code into src/Domain/<Domain> with Actions, Payloads, Models, Enums, and Batches, wiring invokable versioned controllers, or deciding where business logic should live. Use when creating a new domain/module, adding a business operation, refactoring fat controllers or models, introducing DTOs/value objects, designing state machines with enums, structuring queued batch jobs that process large datasets, or reviewing Laravel code for domain boundaries and layering. This is a fuller architectural methodology than laravel-best-practices' architecture rule — use this skill when the whole request/response flow needs to be structured, not just a single pattern fixed."
 license: MIT
 metadata:
   author: robmellett
@@ -21,6 +21,7 @@ src/Domain/<DomainName>/
 ├── Payloads/         (typed DTOs)
 ├── Models/           (Eloquent models)
 ├── Enums/            (status/type values)
+├── Batches/          (queued jobs that walk large datasets, optional)
 ├── Events/           (domain events, optional)
 └── Exceptions/       (domain exceptions, optional)
 
@@ -189,6 +190,57 @@ Split at the controller level: `IndexController`/`ShowController` for reads, `St
 
 **A controller either reads or writes. Never both.**
 
+## Batches for large datasets
+
+Long-running work over a large table belongs in `src/Domain/<Domain>/Batches/`, not in a console command, an Action, or an ad-hoc job. Name the class `{Verb}{Domain}Batch` (e.g. `RecalculateCustomerScoresBatch`) so it reads in the domain's vocabulary alongside its Actions.
+
+A Batch is a single `Batchable` job that processes one keyset page and appends the next page back into the running batch — it drains the table one page at a time and stops when a page comes back empty. Use `forPageAfterId` (keyset pagination), never `OFFSET`.
+
+```php
+namespace Domain\Customer\Batches;
+
+use Domain\Customer\Models\Customer;
+use Illuminate\Bus\Batchable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+
+final class RecalculateCustomerScoresBatch implements ShouldQueue
+{
+    use Batchable;
+
+    public function __construct(
+        public readonly int $lastId = 0,
+    ) {}
+
+    public function handle(): void
+    {
+        if ($this->batch()?->cancelled()) {
+            return;
+        }
+
+        $customers = Customer::forPageAfterId(perPage: 100, lastId: $this->lastId)->get();
+
+        $customers->each(function (Customer $customer) {
+            // delegate real work to an Action — the Batch only walks the data
+        });
+
+        if ($customers->isNotEmpty()) {
+            $this->batch()->add(new self($customers->last()->id));
+        }
+    }
+}
+```
+
+- The Batch **walks** the dataset; per-record business logic still lives in an Action the Batch invokes. Keep the loop body thin.
+- Console commands and scheduled tasks dispatch the Batch and return immediately — they never run the query themselves:
+
+```php
+Bus::batch([new RecalculateCustomerScoresBatch])
+    ->name('recalculate-customer-scores')
+    ->dispatch();
+```
+
+See [`laravel-best-practices`](../laravel-best-practices/rules/queue-jobs.md) for the queue-level details (batch callbacks, cancellation, `retry_after` vs `timeout`).
+
 ## PHP style enforcement
 
 - `declare(strict_types=1);` in every file
@@ -263,6 +315,7 @@ src/Support/Twilio/
 | Type | Pattern | Example |
 |------|---------|---------|
 | Action | `{Verb}{Domain}Action` | `CreateTaskAction` |
+| Batch | `{Verb}{Domain}Batch` | `RecalculateTaskScoresBatch` |
 | Controller | `{Verb}{Domain}Controller` | `StoreTaskController` |
 | Request | `{Verb}{Domain}Request` | `StoreTaskRequest` |
 | Payload | `{Verb}{Domain}Payload` | `StoreTaskPayload` |
@@ -286,6 +339,8 @@ src/Domain/Task/
 ├── Enums/
 │   ├── TaskStatus.php
 │   └── Priority.php
+├── Batches/
+│   └── RecalculateTaskScoresBatch.php
 └── Exceptions/
     └── InvalidStateTransition.php
 
@@ -314,5 +369,6 @@ Namespaces: `Domain\Task\Actions\CreateTaskAction`, `Domain\Task\Payloads\StoreT
 - [ ] All classes `final` (drop `readonly` only when mutation is required)
 - [ ] No `app()` / `resolve()` calls — dependency injection always
 - [ ] State transitions gated by enum guards or explicit Actions
+- [ ] Large-dataset walks live in `Batches/` (self-appending Batchable jobs), never in console commands
 - [ ] Tests target Actions and HTTP endpoints, not models
 - [ ] Vendor SDKs are wrapped in `src/Support/<VendorName>/`, never called directly from a Domain
