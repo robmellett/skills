@@ -17,6 +17,7 @@ Idiomatic Filament is won at the **planning** stage, not the syntax stage: a vag
 - Activate when deciding which Filament primitive (Resource, Page, Relation manager/page, Action, form component) should represent a domain concept, relationship, or state transition.
 - Activate when a `form()`, `table()`, `infolist()`, or `configure()` method is long or a resource file is hard to read.
 - Activate when working on Filament schemas, forms, tables, infolists, columns, filters, or actions.
+- Activate when a model gains or changes a field and the resource's form, infolist, and table need to be kept in sync.
 
 ## Scope
 - In scope: Filament v5 resources and their schema, table, infolist, column, filter, action, and page definitions; how relationships are represented and managed.
@@ -157,6 +158,16 @@ public static function getRecordSubNavigation(Page $page): array
 
 A relation page **replaces** its relation manager: don't also register it in `getRelations()`. Customize it with the same `table()` and `form()` you'd use on a relation manager.
 
+## Keep every surface in sync when a field changes
+A field on the model surfaces in more than one place in a resource, and Filament won't add it for you. When you add or change a field (a new migration column, a renamed attribute, a new cast), propagate it to **every surface the resource exposes** — not just the one you were asked about:
+
+- **Form schema** — add the input so the field can be set and edited.
+- **Infolist** — add the entry so the field shows on the View page.
+- **Table** — add a column (mark it `toggleable()` / hidden by default if it's secondary) so it's visible, searchable, and sortable in the list.
+- **Filters** — add a filter when users will scope by the field (status, category, boolean flag, date range).
+
+A field that exists on the model but is missing from the form, infolist, or table is the most common Filament omission. Treat "added a column" as "must appear in the form, infolist, and table" by default; leave a surface out only deliberately — e.g. a secret/token field, or an internal timestamp — and prefer that to silently forgetting it. When the definition lives in extracted schema/table/infolist classes, update those classes, not the resource.
+
 ## Get the details right
 These are the specifics agents most often get wrong — copy them exactly:
 
@@ -175,12 +186,14 @@ When reviewing Filament code, flag:
 - A resource or destructive/state-changing action with no authorization → add a policy; scope queries when multi-tenant.
 - A state transition implemented as a plain edit → model it as a dedicated Action.
 - Icons, labels, or validation hard-coded inline where a component class would centralize them.
+- A model field (new column, renamed attribute) present in one surface but missing from the others → add it to the form, infolist, and table (and a filter if users scope by it).
 
 ## Core Rules (Summary)
 - Decide the primitive before writing the schema; map state transitions to Actions.
 - Represent relationships per the decision table; **default to relation pages with sub-navigation**, and don't register a relation page in `getRelations()`.
 - Extract long `form()`/`table()`/`infolist()` definitions into schema/table classes with a static `configure(Schema|Table): Schema|Table`, called from the resource.
 - Extract heavily-configured or reused components into component classes with a static `make()` factory.
+- When a model field is added or changed, propagate it across every surface — form, infolist, table (and a filter where users scope by it) — not just the one in front of you.
 - Give schema/table/component classes no parent class or interface, so `configure()`/`make()` stay free to take custom parameters.
 - Place and name extracted classes per the conventions table; get namespaces, generators, signatures, and the `Heroicon` enum exactly right.
 - Defer to any Boost-generated Filament guidelines already in the project.
