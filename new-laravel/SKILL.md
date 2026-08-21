@@ -53,6 +53,7 @@ This project uses the following mandatory stack. Do not suggest alternatives.
 - Format with Laravel Pint using the bundled `pint.json` — `declare(strict_types=1)` is enforced in every PHP file
 - Static-analyse with Larastan, configured via `phpstan.neon`
 - Install and configure the required packages — see [Laravel setup](#laravel-setup)
+- Error monitoring is Sentry, wired at install time — see [Monitoring](#monitoring)
 
 ---
 
@@ -116,6 +117,12 @@ parameters:
         
     level: 7
 ```
+
+---
+
+## Monitoring
+
+Every project install gets Sentry. Follow the `sentry-monitoring` skill — it covers `sentry/sentry-laravel`, the `bootstrap/app.php` wiring, the excimer extension for profiling under Sail, and the `0.1` sample rate. A project with a Vite frontend also needs the browser install.
 
 ---
 

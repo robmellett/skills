@@ -276,7 +276,13 @@ npm run db:migrate:remote
  
 ---
  
-## 14. Dev & Deploy
+## 14. Add Sentry
+ 
+Every project install gets error monitoring. Follow the `sentry-monitoring` skill — Hono on Workers needs `@sentry/hono`, the `nodejs_compat` flag, and a `0.1` sample rate.
+ 
+---
+ 
+## 15. Dev & Deploy
  
 ```bash
 # Local dev with D1 local SQLite
