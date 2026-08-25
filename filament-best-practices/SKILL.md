@@ -1,6 +1,6 @@
 ---
 name: filament-best-practices
-description: Build idiomatic, maintainable Filament v5 panels. Use when creating, editing, reviewing, or refactoring Filament resources, schemas, forms, tables, infolists, actions, pages, widgets, or relationships; when choosing which Filament primitive should represent a domain concept; or when a form(), table(), infolist(), or configure() method grows long. Covers choosing the right primitive, keeping resource code small via schema/table and component classes, defaulting relationships to relation pages with sub-navigation, the exact namespaces/commands/signatures agents get wrong, and a review checklist.
+description: Build idiomatic, maintainable Filament v5 panels. Use when creating, editing, reviewing, or refactoring Filament resources, schemas, forms, tables, infolists, actions, pages, widgets, or relationships; when choosing which Filament primitive should represent a domain concept; or when a form(), table(), infolist(), or configure() method grows long. Covers choosing the right primitive, keeping resource code small via schema/table and component classes, building infolists that cover every model property, defaulting relationships to relation pages with sub-navigation, the exact namespaces/commands/signatures agents get wrong, and a review checklist.
 license: MIT
 metadata:
   author: Filament
@@ -18,6 +18,7 @@ Idiomatic Filament is won at the **planning** stage, not the syntax stage: a vag
 - Activate when a `form()`, `table()`, `infolist()`, or `configure()` method is long or a resource file is hard to read.
 - Activate when working on Filament schemas, forms, tables, infolists, columns, filters, or actions.
 - Activate when a model gains or changes a field and the resource's form, infolist, and table need to be kept in sync.
+- Activate when building or reviewing a View page / infolist — the entry list must account for every model property.
 
 ## Scope
 - In scope: Filament v5 resources and their schema, table, infolist, column, filter, action, and page definitions; how relationships are represented and managed.
@@ -168,6 +169,56 @@ A field on the model surfaces in more than one place in a resource, and Filament
 
 A field that exists on the model but is missing from the form, infolist, or table is the most common Filament omission. Treat "added a column" as "must appear in the form, infolist, and table" by default; leave a surface out only deliberately — e.g. a secret/token field, or an internal timestamp — and prefer that to silently forgetting it. When the definition lives in extracted schema/table/infolist classes, update those classes, not the resource.
 
+## Infolists show the whole record
+A form exposes only what's editable and a table only what's scannable, but an **infolist is the record's full detail view — default to an entry for every model property.** The habitual failure is picking "the interesting five" and dropping the rest, which leaves the View page unable to answer basic questions about the record and pushes users into the Edit page just to read data.
+
+Enumerate the model's attributes from the model and its migrations before writing entries — never from memory, and never by copying the form:
+
+```bash
+php artisan model:show Customer
+```
+
+`model:show` lists every column with its type and cast, plus the model's relationships; that output is the checklist the infolist has to satisfy. Also check `casts()`, `$appends`, and any `Attribute` accessors — those are real properties with no column behind them.
+
+Include:
+
+- **Every database column** — including `id`, foreign keys, nullable columns, `created_at`/`updated_at`, and `deleted_at` when the model soft-deletes.
+- **Appended and computed attributes** — `full_name`, `total`, anything in `$appends`.
+- **Relationships** — a `TextEntry` on the dotted path for belongs-to (`customer.name`), a `RepeatableEntry` for a small has-many (a relation page for a large one).
+
+Omit an entry only for a stated reason — a hashed password, an API token or secret, a raw foreign key whose related label is already shown — never because the panel felt long. When a value is sensitive but real, gate it (`->visible()`, policy check) rather than silently leaving it out.
+
+### Length is a layout problem, not a reason to drop fields
+Group entries into `Section`s by meaning and collapse the low-interest ones. A "Record" section holding `id` and the timestamps, `->collapsed()`, keeps the page tidy without losing data:
+
+```php
+use Filament\Schemas\Components\Section;
+
+Section::make('Record')
+    ->collapsed()
+    ->schema([
+        TextEntry::make('id')->copyable(),
+        TextEntry::make('created_at')->dateTime(),
+        TextEntry::make('updated_at')->dateTime()->since(),
+    ]);
+```
+
+### Pick the entry from the cast
+| Model cast / column type | Entry |
+| --- | --- |
+| `bool` | `IconEntry::make(...)->boolean()` |
+| `date`, `datetime`, `immutable_datetime` | `TextEntry::make(...)->date()` / `->dateTime()` (add `->since()` for recency) |
+| enum implementing `HasLabel`/`HasColor` | `TextEntry::make(...)->badge()` |
+| `array`, `json`, `collection` | `KeyValueEntry` for a flat map, `RepeatableEntry` for a list of rows |
+| `decimal` / money column | `TextEntry::make(...)->money('aud')` |
+| `text` / `longText` | `TextEntry::make(...)->columnSpanFull()` (`->markdown()`/`->html()` when it holds rich text) |
+| URL column | `TextEntry::make(...)->url(...)->openUrlInNewTab()` |
+| `belongsTo` | `TextEntry::make('customer.name')` — show the label, not the raw `customer_id` |
+| `hasMany`, `morphMany` | `RepeatableEntry`, or a relation page when the collection is large |
+| `hashed`, token, secret | omit deliberately |
+
+Give nullable entries a `->placeholder('—')` so an empty value still renders as a labelled row instead of a gap.
+
 ## Get the details right
 These are the specifics agents most often get wrong — copy them exactly:
 
@@ -187,6 +238,7 @@ When reviewing Filament code, flag:
 - A state transition implemented as a plain edit → model it as a dedicated Action.
 - Icons, labels, or validation hard-coded inline where a component class would centralize them.
 - A model field (new column, renamed attribute) present in one surface but missing from the others → add it to the form, infolist, and table (and a filter if users scope by it).
+- An infolist that covers only some of the model's properties → run `php artisan model:show` and add the missing entries; section and collapse rather than trim.
 
 ## Core Rules (Summary)
 - Decide the primitive before writing the schema; map state transitions to Actions.
@@ -194,6 +246,7 @@ When reviewing Filament code, flag:
 - Extract long `form()`/`table()`/`infolist()` definitions into schema/table classes with a static `configure(Schema|Table): Schema|Table`, called from the resource.
 - Extract heavily-configured or reused components into component classes with a static `make()` factory.
 - When a model field is added or changed, propagate it across every surface — form, infolist, table (and a filter where users scope by it) — not just the one in front of you.
+- Build infolists from the model's full property list (`php artisan model:show`), not from the form; omit an entry only for a stated reason such as a secret or a hashed value.
 - Give schema/table/component classes no parent class or interface, so `configure()`/`make()` stay free to take custom parameters.
 - Place and name extracted classes per the conventions table; get namespaces, generators, signatures, and the `Heroicon` enum exactly right.
 - Defer to any Boost-generated Filament guidelines already in the project.

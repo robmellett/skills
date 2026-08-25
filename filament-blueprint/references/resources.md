@@ -136,6 +136,11 @@ The `RecordTitleAttribute` is what displays in search results. Add
 When using `--view` flag, **you MUST define an `Infolist:` section** in your
 plan. Without it, the View page shows a disabled form, which looks poor.
 
+The `Infolist:` section **MUST cover every model property**—run
+`php artisan model:show <Model>` and list an entry for each column, appended
+attribute, and relationship. Note any deliberate omission (secrets, hashed
+values) with its reason. See [infolists.md].
+
 ```
 Resource: OrderResource
   Command: php artisan make:filament-resource Order --view --no-interaction

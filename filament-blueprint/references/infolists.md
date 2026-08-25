@@ -8,6 +8,48 @@
 When planning infolist entries (for View pages), include enough detail that the
 implementing agent can write them without looking anything up.
 
+## Cover Every Model Property
+
+**An infolist MUST specify an entry for every property on the model.** A View
+page is the record's full detail view—unlike a form (only what's editable) or a
+table (only what's scannable), it has no reason to hide data. The implementing
+agent will build exactly the entries you list, so an incomplete plan produces an
+incomplete View page.
+
+Before writing the `Infolist:` section, enumerate the model's attributes:
+
+```bash
+php artisan model:show Order
+```
+
+That output—every column with its type and cast, plus the relationships—is the
+checklist your plan must satisfy. Also account for `casts()`, `$appends`, and
+`Attribute` accessors: they are real properties with no column behind them.
+
+Your plan must include an entry for:
+
+- Every database column—including `id`, foreign keys, nullable columns,
+  `created_at`/`updated_at`, and `deleted_at` when the model soft-deletes
+- Every appended/computed attribute (`$appends`, accessors)
+- Every relationship—dotted path `TextEntry` for belongs-to
+  (`Entry: customer.name`), `RepeatableEntry` for a small has-many
+
+Omit an entry only for a stated reason—a hashed password, an API token or
+secret, or a raw foreign key whose related label you already show. Write the
+reason in the plan so the implementing agent doesn't "helpfully" add it back:
+
+```
+Omitted (deliberate):
+  password_hash — never displayed
+  api_token — secret
+  customer_id — shown as customer.name instead
+```
+
+**Length is a layout problem, not a reason to drop properties.** If the panel is
+long, group entries into Sections and collapse the low-interest ones (see
+[schema-layouts.md]); a `Section: Record` with `Collapsed: yes` holding `id`
+and the timestamps keeps the page tidy without losing data.
+
 ## Namespace Pattern
 
 All infolist components: `Filament\Infolists\Components\{Component}`
@@ -95,8 +137,9 @@ columns—entries become too narrow (25% width). Either:
 
 ## Don't Write
 
-| Bad (vague)          | Good (specific)        |
-| -------------------- | ---------------------- |
-| "Show the status"    | See plan format above  |
-| "Display as a badge" | `Config: ->badge()`    |
-| "Format as date"     | `Config: ->dateTime()` |
+| Bad (vague)           | Good (specific)                 |
+| --------------------- | ------------------------------- |
+| "Show the status"     | See plan format above           |
+| "Show the key fields" | One `Entry:` per model property |
+| "Display as a badge"  | `Config: ->badge()`             |
+| "Format as date"      | `Config: ->dateTime()`          |
