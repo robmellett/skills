@@ -6,6 +6,7 @@ description: Write or review a software design doc before implementation — obj
 A design doc exists to settle the **one-way doors** — the decisions that are expensive or impossible to undo — with reviewers, before anyone writes code. It is not a description of the implementation: if you specify every detail, you have written the implementation during the design phase, which defeats the point.
 
 Reference for every section, with examples: [`SECTIONS.md`](SECTIONS.md).
+A complete worked doc, end to end: [`EXAMPLE.md`](EXAMPLE.md) — read it when you need the register and level of detail, not just the section list.
 
 Reviewing a doc that already exists? Skip to [Reviewing](#reviewing-an-existing-doc).
 
