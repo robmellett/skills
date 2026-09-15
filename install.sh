@@ -14,8 +14,11 @@ case "$(uname -s)" in
 esac
 
 rsync -av \
-  --exclude='.git/' --exclude='.DS_Store' --exclude='.claude/' \
+  --exclude='.git/' --exclude='.DS_Store' --exclude='.claude/' --exclude='CLAUDE.md' \
   "$SOURCE_DIR" "$HOME/.agents/skills/"
+
+# Global instructions live in this repo; install.sh keeps ~/.claude/CLAUDE.md in sync with it.
+cp "${SOURCE_DIR}CLAUDE.md" "$HOME/.claude/CLAUDE.md"
 
 
 for d in ~/.agents/skills/*/; do
