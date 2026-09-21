@@ -45,6 +45,7 @@ Cross-cutting changes often need more than one rule file.
 | Events and notifications | [`rules/events-notifications.md`](rules/events-notifications.md) |
 | Mailables and mail assertions | [`rules/mail.md`](rules/mail.md) |
 | Scheduled tasks and overlap protection | [`rules/scheduling.md`](rules/scheduling.md) |
+| Artisan commands, signatures, arguments and options | [`rules/artisan-commands.md`](rules/artisan-commands.md) |
 | Collections, lazy iteration, bulk operations | [`rules/collections.md`](rules/collections.md) |
 | Blade components, attributes, composers | [`rules/blade-views.md`](rules/blade-views.md) |
 | Environment values and application configuration | [`rules/config.md`](rules/config.md) |
