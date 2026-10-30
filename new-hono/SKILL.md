@@ -52,6 +52,22 @@ npm install
 ```
  
 > `create-hono` bootstraps the Workers entry point, `wrangler.jsonc`, and `tsconfig.json` automatically. Always use it — don't hand-write the scaffold.
+
+### Pin Node 26
+
+Node 26 (Active LTS) is the default. Pin it in the project root:
+
+```bash
+echo "26" > .node-version
+```
+
+and add the consumer-facing range to `package.json`:
+
+```json
+"engines": { "node": ">=26" }
+```
+
+> Use `.node-version`, not `.nvmrc`. If the template ships an `.nvmrc`, delete it. Don't use Node 24 (Maintenance LTS) or Node 27 (alpha).
  
 ---
  

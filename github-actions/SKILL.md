@@ -11,7 +11,7 @@ description: >
 
 # GitHub Actions — deploy Cloudflare Workers
 
-Ship a Workers/Hono project to Cloudflare on push, on the project stack: pnpm, Node 24, the `@cloudflare/vite-plugin` build, D1, and `cloudflare/wrangler-action`.
+Ship a Workers/Hono project to Cloudflare on push, on the project stack: pnpm, Node 26, the `@cloudflare/vite-plugin` build, D1, and `cloudflare/wrangler-action`.
 
 ## Fix: "Node.js 20 actions are deprecated"
 
@@ -38,6 +38,8 @@ Pin to the **major tag** (`@v4`) so security and patch releases flow in automati
 | `pnpm/action-setup` | `@v6` | node24 |
 
 _(Current as of 2026-07. These are the whole reason the warning does or doesn't appear — a Node20-era major is a Node20-era warning.)_
+
+The **Runtime** column is the Node each action runs *itself* on, set by GitHub. It is unrelated to the Node your project builds with — that comes from `setup-node` reading `.node-version` (Node 26).
 
 ## The deploy workflow
 
@@ -71,7 +73,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version-file: .nvmrc   # pins Node 24 from your .nvmrc
+          node-version-file: .node-version   # pins Node 26 from your .node-version
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -106,6 +108,7 @@ Each step below earns its place — the action does less than people assume.
 - **Install first, and the action reuses your pinned wrangler.** With `node_modules` populated, the action logs `🔍 Checking for existing Wrangler installation`, finds it, and skips its own install — so CI runs the exact Wrangler version in your lockfile instead of drifting to latest. (That log line is in the deploy output you already see.)
 - **Build before deploy.** `pnpm build` (`vite build`) writes the output `wrangler.json` and assets that `wrangler deploy` deploys; without it, deploy has nothing to ship.
 - **`pnpm/action-setup` before `setup-node`.** `setup-node`'s pnpm cache needs pnpm already on PATH.
+- **Node from `.node-version`, not `.nvmrc` or a literal.** CI reads the same `26` pin as local dev, so the two can't drift. If the project only has `.nvmrc`, rename it to `.node-version`.
 - **Migrate before deploy.** Apply additive D1 migrations while the old code still runs, so the schema is ready when the new code goes live.
 
 ## Credentials
