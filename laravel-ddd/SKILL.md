@@ -93,7 +93,7 @@ final readonly class StoreTaskData
 **All communication between layers happens through Data objects. Never pass a bare `array $data` across a boundary.**
 
 ### 5. Actions
-One business operation per invokable class, named `{Verb}{Domain}Action`. Dependencies come from constructor injection (never `app()`/`resolve()` internally); actions return models or values, never arrays. Wrap multi-write operations in a transaction; throw domain exceptions for precondition failures.
+One business operation per class, named `{Verb}{Domain}Action`. Dependencies come from constructor injection (never `app()`/`resolve()` internally); actions return models or values, never arrays. Wrap multi-write operations in a transaction; throw domain exceptions for precondition failures.
 
 ```php
 final readonly class CreateTaskAction
@@ -112,6 +112,8 @@ final readonly class CreateTaskAction
     }
 }
 ```
+
+**Note:** an action's entry point is either `__invoke()` or `execute()`. Invokable actions are called like a function, `($this->recordAuditTrail)($task)`; `execute()` actions are called by name, `$this->recordAuditTrail->execute($task)`. Match whichever the codebase already uses.
 
 **One action = one user story.**
 
