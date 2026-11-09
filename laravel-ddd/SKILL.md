@@ -217,7 +217,8 @@ final class RecalculateCustomerScoresBatch implements ShouldQueue
             return;
         }
 
-        $customers = Customer::forPageAfterId(perPage: 100, lastId: $this->lastId)->get();
+        $customers = Customer::query()
+            ->forPageAfterId(perPage: 100, lastId: $this->lastId)->get();
 
         $customers->each(function (Customer $customer) {
             // delegate real work to an Action — the Batch only walks the data
