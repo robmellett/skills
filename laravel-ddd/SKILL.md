@@ -1,6 +1,6 @@
 ---
 name: laravel-ddd
-description: "Apply this skill when structuring a Laravel application around domain-driven design — organizing code into src/Domain/<Domain> with Actions, Payloads, Models, Enums, and Batches, wiring invokable versioned controllers, or deciding where business logic should live. Use when creating a new domain/module, adding a business operation, refactoring fat controllers or models, introducing DTOs/value objects, designing state machines with enums, structuring queued batch jobs that process large datasets, or reviewing Laravel code for domain boundaries and layering. This is a fuller architectural methodology than laravel-best-practices' architecture rule — use this skill when the whole request/response flow needs to be structured, not just a single pattern fixed."
+description: "Apply this skill when structuring a Laravel application around domain-driven design — organizing code into src/Domain/<Domain> with Actions, Data, Models, Enums, and Batches, wiring invokable versioned controllers, or deciding where business logic should live. Use when creating a new domain/module, adding a business operation, refactoring fat controllers or models, introducing DTOs/value objects, designing state machines with enums, structuring queued batch jobs that process large datasets, or reviewing Laravel code for domain boundaries and layering. This is a fuller architectural methodology than laravel-best-practices' architecture rule — use this skill when the whole request/response flow needs to be structured, not just a single pattern fixed."
 license: MIT
 metadata:
   author: robmellett
@@ -18,7 +18,7 @@ This is a stricter, fuller methodology than [`laravel-best-practices`](../larave
 ```
 src/Domain/<DomainName>/
 ├── Actions/          (business operations)
-├── Payloads/         (typed DTOs)
+├── Data/             (typed DTOs)
 ├── Models/           (Eloquent models)
 ├── Enums/            (status/type values)
 ├── Batches/          (queued jobs that walk large datasets, optional)
@@ -29,7 +29,7 @@ src/Support/<VendorName>/   (third-party SDK adapters, one folder per vendor)
 
 app/Http/
 ├── Controllers/<Domain>/V1/    (invokable, versioned)
-├── Requests/<Domain>/V1/       (validation + payload())
+├── Requests/<Domain>/V1/       (validation + toData())
 └── Responses/                  (Responsable classes)
 ```
 
@@ -54,29 +54,31 @@ Replace technical defaults with the product owner's vocabulary (`User` → `Cust
 One controller per operation, one `__invoke()` method, versioned under `V1/`, `V2/` for safe breaking changes. Controllers exclusively wire request → action → response — no business logic, no direct model writes.
 
 ### 3. Form Requests as DTO carriers
-Validation stays in the `FormRequest`; the same class produces a typed payload via `payload()`. Controllers never touch `$request->all()` or `$request->validated()` directly.
+Validation stays in the `FormRequest`; the same class produces a typed Data object via `toData()`. Controllers never touch `$request->all()` or `$request->validated()` directly.
 
 ```php
 final class StoreTaskRequest extends FormRequest
 {
     public function rules(): array { /* validation */ }
 
-    public function payload(): StoreTaskPayload
+    public function toData(): StoreTaskData
     {
-        return new StoreTaskPayload(
+        return new StoreTaskData(
             title: $this->validated('title'),
-            dueAt: $this->date('due_at'),
+            dueAt: $this->date('due_at')?->toImmutable(),
             priority: Priority::from($this->validated('priority')),
         );
     }
 }
 ```
 
-### 4. Payloads (DTOs)
+`date()` returns a mutable `Carbon` unless the app calls `Date::use(CarbonImmutable::class)`, so convert it with `toImmutable()` before it reaches the DTO.
+
+### 4. Data objects (DTOs)
 `final readonly class` with promoted constructor properties — strong typing and immutability, no external package needed. Include `toArray()`.
 
 ```php
-final readonly class StoreTaskPayload
+final readonly class StoreTaskData
 {
     public function __construct(
         public string $title,
@@ -88,7 +90,7 @@ final readonly class StoreTaskPayload
 }
 ```
 
-**All communication between layers happens through Payloads. Never pass a bare `array $data` across a boundary.**
+**All communication between layers happens through Data objects. Never pass a bare `array $data` across a boundary.**
 
 ### 5. Actions
 One business operation per invokable class, named `{Verb}{Domain}Action`. Dependencies come from constructor injection (never `app()`/`resolve()` internally); actions return models or values, never arrays. Wrap multi-write operations in a transaction; throw domain exceptions for precondition failures.
@@ -100,10 +102,10 @@ final readonly class CreateTaskAction
         private RecordTaskCreatedAction $recordAuditTrail,
     ) {}
 
-    public function __invoke(StoreTaskPayload $payload): Task
+    public function __invoke(StoreTaskData $data): Task
     {
-        return DB::transaction(function () use ($payload) {
-            $task = Task::create($payload->toArray());
+        return DB::transaction(function () use ($data) {
+            $task = Task::create($data->toArray());
             ($this->recordAuditTrail)($task);
             return $task;
         });
@@ -217,7 +219,8 @@ final class RecalculateCustomerScoresBatch implements ShouldQueue
             return;
         }
 
-        $customers = Customer::forPageAfterId(perPage: 100, lastId: $this->lastId)->get();
+        $customers = Customer::query()
+            ->forPageAfterId(perPage: 100, lastId: $this->lastId)->get();
 
         $customers->each(function (Customer $customer) {
             // delegate real work to an Action — the Batch only walks the data
@@ -264,7 +267,7 @@ See [`laravel-best-practices`](../laravel-best-practices/rules/queue-jobs.md) fo
 Third-party SDK wrappers (Stripe, Twilio, Mailgun, S3, ...) live in `src/Support/<VendorName>/` — one folder per vendor, e.g. `src/Support/Stripe/`, `src/Support/Twilio/`. Never a catch-all `src/Support/Integrations/`, and never inside `src/Domain` — a vendor has no business vocabulary of its own.
 
 - A Domain owns the contract (interface); the vendor folder owns the implementation. Actions type-hint the contract, never the vendor SDK class directly.
-- `src/Support/<VendorName>` classes hold no business logic — only translation between the vendor's shape and the app's Payloads/DTOs.
+- `src/Support/<VendorName>` classes hold no business logic — only translation between the vendor's shape and the app's Data objects.
 - Bind the concrete adapter to the contract in a service provider so the vendor can be swapped (e.g. Stripe → Braintree) without touching Domain code.
 - Vendor config (API keys, webhook secrets) stays in `config/services.php`, injected via the constructor — never read with `env()` inside `src/Support`.
 
@@ -318,7 +321,7 @@ src/Support/Twilio/
 | Batch | `{Verb}{Domain}Batch` | `RecalculateTaskScoresBatch` |
 | Controller | `{Verb}{Domain}Controller` | `StoreTaskController` |
 | Request | `{Verb}{Domain}Request` | `StoreTaskRequest` |
-| Payload | `{Verb}{Domain}Payload` | `StoreTaskPayload` |
+| Data | `{Verb}{Domain}Data` | `StoreTaskData` |
 | Response | `{Shape}Response` | `JsonDataResponse` |
 | Enum | `{Concept}{Suffix}` | `TaskStatus`, `Priority` |
 | Exception | `{Problem}Exception` | `InvalidStateTransition` |
@@ -332,8 +335,8 @@ src/Domain/Task/
 │   ├── CreateTaskAction.php
 │   ├── CompleteTaskAction.php
 │   └── RecordTaskCreatedAction.php
-├── Payloads/
-│   └── StoreTaskPayload.php
+├── Data/
+│   └── StoreTaskData.php
 ├── Models/
 │   └── Task.php
 ├── Enums/
@@ -356,14 +359,14 @@ app/Http/
     └── JsonErrorResponse.php
 ```
 
-Namespaces: `Domain\Task\Actions\CreateTaskAction`, `Domain\Task\Payloads\StoreTaskPayload`, `App\Http\Controllers\Task\V1\StoreTaskController`.
+Namespaces: `Domain\Task\Actions\CreateTaskAction`, `Domain\Task\Data\StoreTaskData`, `App\Http\Controllers\Task\V1\StoreTaskController`.
 
 ## Pre-ship checklist
 
 - [ ] Every business operation lives in an Action
 - [ ] Controllers wire Request → Action → Response only
-- [ ] No bare arrays cross a boundary — Payloads everywhere
-- [ ] Form Requests handle validation and `payload()` generation
+- [ ] No bare arrays cross a boundary — Data objects everywhere
+- [ ] Form Requests handle validation and build Data objects via `toData()`
 - [ ] Models contain no business logic
 - [ ] `declare(strict_types=1)` on every file
 - [ ] All classes `final` (drop `readonly` only when mutation is required)
