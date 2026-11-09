@@ -65,12 +65,14 @@ final class StoreTaskRequest extends FormRequest
     {
         return new StoreTaskData(
             title: $this->validated('title'),
-            dueAt: $this->date('due_at'),
+            dueAt: $this->date('due_at')?->toImmutable(),
             priority: Priority::from($this->validated('priority')),
         );
     }
 }
 ```
+
+`date()` returns a mutable `Carbon` unless the app calls `Date::use(CarbonImmutable::class)`, so convert it with `toImmutable()` before it reaches the DTO.
 
 ### 4. Data objects (DTOs)
 `final readonly class` with promoted constructor properties — strong typing and immutability, no external package needed. Include `toArray()`.
