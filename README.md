@@ -19,33 +19,27 @@ npx skills@latest add robmellett/skills --skill specific-skill
 
 ## Maintenance
 
+Both scripts are plain bash (3.2+) with no rsync/diffutils dependency, so they run
+on macOS and Omarchy/Arch alike. Pass `-n` to either for a dry run.
+
 ```bash
 # PUSH (repo → live)
-rsync -av \
-  --exclude='.git/' --exclude='.DS_Store' --exclude='.claude/' \
-  "/Users/$USER/Code/robmellett-skills/" "$HOME/.agents/skills/" 
+./install.sh
 
 # PULL (live → repo): copies ~/.claude/CLAUDE.md and ~/.agents/skills/* into the repo
-./backup.sh        # add -nv for a dry run
+./backup.sh
 ```
 
-## Configure Claude
+`install.sh`:
 
-### Set up symlinks in Claude.
+- copies every skill (a top-level dir with a `SKILL.md`) into `~/.agents/skills/<skill>`
+- links `~/.claude/skills/<skill> -> ../../.agents/skills/<skill>`, so Claude always reads the agents copy
+- installs `CLAUDE.md` to `~/.claude/CLAUDE.md`
+- removes Claude symlinks into `~/.agents/skills` that no longer resolve
 
-```bash
-for d in ~/.agents/skills/*/; do
-  name=$(basename "$d")
-  ln -sfn "../../.agents/skills/$name" ~/.claude/skills/"$name"
-done
-```
+Before replacing anything that differs from the repo — the live `CLAUDE.md`, a live
+skill dir, or a real directory where a Claude symlink belongs — it moves it to
+`~/.agents/backups/<timestamp>/`.
 
-### Fix Symlinks in Claude
-
-```bash
-# preview broken symlinks
-find -L ~/.claude/skills -maxdepth 1 -type l
-
-# delete them (real dirs are untouched — only broken symlinks match)
-find -L ~/.claude/skills -maxdepth 1 -type l -delete
-```
+`backup.sh` always copies `~/.claude/CLAUDE.md` back into the repo, then mirrors each
+skill in `~/.agents/skills`. Review `git diff` before committing.
