@@ -25,10 +25,8 @@ rsync -av \
   --exclude='.git/' --exclude='.DS_Store' --exclude='.claude/' \
   "/Users/$USER/Code/robmellett-skills/" "$HOME/.agents/skills/" 
 
-# PULL (live → repo)
-rsync -av --delete  \
-  --exclude='.git/' --exclude='.DS_Store' --exclude='.claude/' --exclude="README.md" \
-  "$HOME/.agents/skills/" "/Users/$USER/Code/robmellett-skills/"
+# PULL (live → repo): copies ~/.claude/CLAUDE.md and ~/.agents/skills/* into the repo
+./backup.sh        # add -nv for a dry run
 ```
 
 ## Configure Claude
