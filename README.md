@@ -26,7 +26,7 @@ rsync -av \
   "/Users/$USER/Code/robmellett-skills/" "$HOME/.agents/skills/" 
 
 # PULL (live → repo): copies ~/.claude/CLAUDE.md and ~/.agents/skills/* into the repo
-./backup.zsh        # add -nv for a dry run
+./backup.sh        # add -nv for a dry run
 ```
 
 ## Configure Claude
